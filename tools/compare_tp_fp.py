@@ -71,6 +71,7 @@ if __name__ == '__main__':
 
         ax.set_xticks([0, 1])
         ax.set_xticklabels(['TP', 'FP'])
+        ax.set_ylabel(titleii)
         ax.grid(True, axis='y')
 
     figure.tight_layout()
