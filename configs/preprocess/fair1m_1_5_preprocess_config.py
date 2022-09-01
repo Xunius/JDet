@@ -1,7 +1,11 @@
 type='FAIR1M_1_5'
-source_fair_dataset_path='/mnt/disk3/flowey/dataset/fair1m_1_5_a/data'
-source_dataset_path='/mnt/disk3/flowey/dataset/fair1m_1_5_a/dota'
-target_dataset_path='/mnt/disk3/flowey/dataset/fair1m_1_5_a/preprocessed'
+#source_fair_dataset_path='/mnt/disk3/flowey/dataset/fair1m_1_5_a/data'
+#source_dataset_path='/mnt/disk3/flowey/dataset/fair1m_1_5_a/dota'
+#target_dataset_path='/mnt/disk3/flowey/dataset/fair1m_1_5_a/preprocessed'
+source_fair_dataset_path='/run/media/guangzhi/MLDATA/FAIR1M1-5/data'
+source_dataset_path='/run/media/guangzhi/MLDATA/FAIR1M1-5/dota'
+#target_dataset_path='/run/media/guangzhi/MLDATA/FAIR1M1-5/preprocessed'
+target_dataset_path='/run/media/guangzhi/MLDATA/FAIR1M1-5/preprocessed_aug_with_dota1'
 convert_tasks=['train','test']
 
 # available labels: train, val, test, trainval
@@ -14,7 +18,7 @@ tasks=[
             multi_scale=[1.],
             horizontal_flip=False,
             vertical_flip=False,
-            rotation_angles=[0.] 
+            rotation_angles=[0.]
         )
     ),
     dict(
@@ -25,7 +29,7 @@ tasks=[
             multi_scale=[1.],
             horizontal_flip=False,
             vertical_flip=False,
-            rotation_angles=[0.] 
+            rotation_angles=[0.]
         )
     )
 ]

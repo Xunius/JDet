@@ -93,7 +93,9 @@ class FAIRDataset(DOTADataset):
 class FAIR1M_1_5_Dataset(DOTADataset):
     CLASSES = FAIR1M_1_5_CLASSES
     def __init__(self,**kwargs):
-        super().__init__(**kwargs)
+        kwargs_copy = kwargs.copy()
+        kwargs_copy['balance_category'] = False
+        super().__init__(**kwargs_copy)
         self.CLASSES = FAIR1M_1_5_CLASSES
 
         for img_info in self.img_infos:
@@ -105,3 +107,66 @@ class FAIR1M_1_5_Dataset(DOTADataset):
             index = area>1.
             img_info["ann"]["bboxes"] = img_info["ann"]["bboxes"][index]
             img_info["ann"]["labels"] = img_info["ann"]["labels"][index]
+
+        self.balance_dict = kwargs.get('balance_category', False)
+        if self.balance_dict:
+            self.img_infos = self._balance_categories()
+        self.total_len = len(self.img_infos)
+
+    def _balance_categories(self):
+        img_infos = self.img_infos
+        cate_dict = {}
+        for idx,img_info in enumerate(img_infos):
+            unique_labels = np.unique(img_info["ann"]["labels"])
+            for label in unique_labels:
+                if label not in cate_dict:
+                    cate_dict[label]=[]
+                cate_dict[label].append(idx)
+        new_idx = []
+
+        total = 0
+        for k,d in cate_dict.items():
+            classname = self.CLASSES[k-1]
+            total += len(d)
+            print(f'{classname}: NO: {len(d)}')
+        print('### Before adjusting :', total)
+
+        '''
+        Original FAIR1m-1.5:
+
+        Vehicle: NO: 1489
+        Intersection: NO: 855
+        Ship: NO: 1492
+        Bridge: NO: 198
+        Airplane: NO: 2188
+        Basketball_Court: NO: 214
+        Baseball_Field: NO: 192
+        Tennis_Court: NO: 211
+        Roundabout: NO: 98
+        Football_Field: NO: 184
+
+        After including DOTAv1:
+
+        Vehicle: NO: 4101
+        Intersection: NO: 855
+        Ship: NO: 3327
+        Bridge: NO: 1600
+        Airplane: NO: 4150
+        Basketball_Court: NO: 477
+        Baseball_Field: NO: 532
+        Tennis_Court: NO: 887
+        Roundabout: NO: 627
+        Football_Field: NO: 418
+        '''
+
+        for k,d in cate_dict.items():
+            classname = self.CLASSES[k-1]
+            scale = self.balance_dict.get(classname, 1.0)
+            s_int, s_frac = int(scale), scale - int(scale)
+            new_d = d*s_int+d[:int(len(d)*s_frac)]
+            new_idx.extend(new_d)
+            print('clsname', classname, len(new_d))
+        img_infos = [self.img_infos[idx] for idx in new_idx]
+
+        print('### After adjusting :', len(img_infos))
+        return img_infos

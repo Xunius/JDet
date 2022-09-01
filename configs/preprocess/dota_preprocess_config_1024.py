@@ -12,7 +12,7 @@ tasks=[
             multi_scale=[1.],
             horizontal_flip=False,
             vertical_flip=False,
-            rotation_angles=[0.] 
+            rotation_angles=[0.]
         )
     ),
     dict(
@@ -23,7 +23,7 @@ tasks=[
             multi_scale=[1.],
             horizontal_flip=False,
             vertical_flip=False,
-            rotation_angles=[0.] 
+            rotation_angles=[0.]
         )
     )
 ]

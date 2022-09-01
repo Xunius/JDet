@@ -1,7 +1,7 @@
 import os 
 import glob 
 import numpy as np
-from jdet.utils.draw import draw_bboxes
+from jdet.utils.draw import draw_bboxes, draw_bboxes_with_gt
 from jdet.config.constant import DOTA1_CLASSES, DOTA_COLORS
 from tqdm import tqdm
 
@@ -57,6 +57,19 @@ def visualize_results(results,classnames,files,save_dir,**kwargs):
     for (bboxes, scores, labels),img_file in tqdm(zip(results,files)):
         save_file = os.path.join(save_dir,os.path.split(img_file)[-1])
         draw_bboxes(img_file,bboxes,labels=labels,scores=scores,class_names=classnames,out_file=save_file,**kwargs)
+
+def visualize_results_with_gt(results, targets, classnames, save_dir, **kwargs):
+    os.makedirs(save_dir,exist_ok=True)
+    for (bboxes, scores, labels), gt in tqdm(zip(results, targets)):
+        img_file = gt['img_file']
+        gt_boxes = gt['polys']
+        gt_labels = gt['labels'] - 1
+        save_file = os.path.join(save_dir, os.path.split(img_file)[-1])
+        draw_bboxes_with_gt(img_file, bboxes, gt_boxes, labels=labels,
+                gt_labels=gt_labels,
+                scores=scores,
+                class_names=classnames,
+                out_file=save_file,**kwargs)
 
 def visualize_dota_ground_truth(gt_dir, classnames, save_dir,style=0):
     img_dir = os.path.join(gt_dir, "images")

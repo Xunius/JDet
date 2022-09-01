@@ -1,7 +1,7 @@
 # {DATASET_PATH}
 #dataset_root = '/mnt/disk3/flowey/dataset/fair1m_1_5_a'
-#dataset_root = '/run/media/guangzhi/MLDATA/FAIR1M1-5'
-dataset_root = '/root/autodl-tmp/dataset/'
+dataset_root = '/run/media/guangzhi/MLDATA/FAIR1M1-5'
+#dataset_root = '/run/media/guangzhi/MLDATA/DOTA/DOTA-v1.0/train/fair_select_preprocessed'
 # model settings
 model = dict(
     type='S2ANet',
@@ -24,12 +24,9 @@ model = dict(
         feat_channels=256,
         stacked_convs=2,
         with_orconv=True,
-        #anchor_ratios=[1.0],
-        anchor_ratios=[1.0, 2.0, 6.0, 10.0],  # needs to put 1.0 at the 1st
+        anchor_ratios=[1.0],
         anchor_strides=[8, 16, 32, 64, 128],
         anchor_scales=[4],
-        #anchor_scales=[2,4,6],
-        anchor_angles=[0, 30, 60, 90, 120, 150],  # needs to put 0 at the 1st
         target_means=[.0, .0, .0, .0, .0],
         target_stds=[1.0, 1.0, 1.0, 1.0, 1.0],
         loss_fam_cls=dict(
@@ -49,10 +46,9 @@ model = dict(
         loss_odm_bbox=dict(
             type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
         test_cfg=dict(
-            nms_pre=4000,
+            nms_pre=2000,
             min_bbox_size=0,
-            #score_thr=0.05,
-            score_thr=0.10,
+            score_thr=0.05,
             nms=dict(type='nms_rotated', iou_thr=0.1),
             max_per_img=2000),
         train_cfg=dict(
@@ -60,7 +56,7 @@ model = dict(
                 assigner=dict(
                     type='MaxIoUAssigner',
                     pos_iou_thr=0.5,
-                    neg_iou_thr=0.4,
+                    neg_iou_thr=0.3,
                     min_pos_iou=0,
                     ignore_iof_thr=-1,
                     iou_calculator=dict(type='BboxOverlaps2D_rotated')),
@@ -75,7 +71,7 @@ model = dict(
                 assigner=dict(
                     type='MaxIoUAssigner',
                     pos_iou_thr=0.5,
-                    neg_iou_thr=0.4,
+                    neg_iou_thr=0.3,
                     min_pos_iou=0,
                     ignore_iof_thr=-1,
                     iou_calculator=dict(type='BboxOverlaps2D_rotated')),
@@ -91,7 +87,8 @@ model = dict(
 dataset = dict(
     train=dict(
         type="FAIR1M_1_5_Dataset",
-        dataset_dir=f'{dataset_root}/preprocessed/train_1024_200_1.0',
+        dataset_dir=f'{dataset_root}/preprocessed_aug_with_dota1/train_1024_200_1.0',
+        #dataset_dir=f'{dataset_root}/preprocessed/train_1024_200_1.0',
         transforms=[
             dict(
                 type="RotatedResize",
@@ -99,10 +96,10 @@ dataset = dict(
                 max_size=1024
             ),
             dict(type='RotatedRandomFlip', prob=0.5),
-            dict(
-            type="RandomRotateAug",
-            random_rotate_on=True,
-            ),
+            #dict(
+            #type="RandomRotateAug",
+            #random_rotate_on=True,
+            #),
             dict(
                 type = "Pad",
                 size_divisor=32),
@@ -113,37 +110,15 @@ dataset = dict(
                 to_bgr=False,)
 
         ],
-        batch_size=4,
-        num_workers=4,
+        batch_size=2,
+        num_workers=2,
         shuffle=True,
-        balance_category={
-            "Airplane": 1.0,
-            "Ship": 1,
-            "Vehicle": 1,
-            "Basketball_Court": 1.0,
-            "Tennis_Court": 1.0,
-            "Football_Field": 1.0,
-            "Baseball_Field": 1.0,
-            "Intersection": 1.0,
-            "Roundabout": 1.0,
-            "Bridge": 1,
-        },
-        #balance_category={
-            #"Airplane": 0.1,
-            #"Ship": 1,
-            #"Vehicle": 1,
-            #"Basketball_Court": 0.3,
-            #"Tennis_Court": 0.1,
-            #"Football_Field": 0.1,
-            #"Baseball_Field": 0.1,
-            #"Intersection": 1,
-            #"Roundabout": 0.1,
-            #"Bridge": 1,
-            #},
+        #balance_category=True,
         filter_empty_gt=False
     ),
     val=dict(
         type="FAIR1M_1_5_Dataset",
+        #dataset_dir=f'{dataset_root}/preprocessed_aug_with_dota1/train_1024_200_1.0',
         dataset_dir=f'{dataset_root}/preprocessed/train_1024_200_1.0',
         transforms=[
             dict(
@@ -160,25 +135,13 @@ dataset = dict(
                 std = [58.395, 57.12, 57.375],
                 to_bgr=False),
         ],
-        balance_category=False,
-        #balance_category={
-        #"Airplane": 0.1,
-        #"Ship": 0.1,
-        #"Vehicle": 0.1,
-        #"Basketball_Court": 0.1,
-        #"Tennis_Court": 0.1,
-        #"Football_Field": 0.1,
-        #"Baseball_Field": 0.1,
-        #"Intersection": 0.1,
-        #"Roundabout": 0.1,
-        #"Bridge": 0.1,
-        #},
-        batch_size=1,
-        num_workers=2,
+        batch_size=2,
+        num_workers=4,
         shuffle=False
     ),
     test=dict(
         type="ImageDataset",
+        #images_dir=f'{dataset_root}/preprocessed_aug_with_dota1/test_1024_200_1.0/images',
         images_dir=f'{dataset_root}/preprocessed/test_1024_200_1.0/images',
         transforms=[
             dict(
@@ -203,10 +166,11 @@ dataset = dict(
 
 optimizer = dict(
     type='SGD',
-    #lr=0.01/4., #0.0,#0.01*(1/8.),
-    lr=0.01/5., #0.0,#0.01*(1/8.),
+    lr=0.01/4., #0.0,#0.01*(1/8.),
+    #momentum=0.9,
     momentum=0.95,
-    weight_decay=0.0001,
+    #weight_decay=0.0001,
+    weight_decay=0.0006,
     grad_clip=dict(
         max_norm=35,
         norm_type=2))
@@ -216,15 +180,15 @@ scheduler = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    gamma=0.2,
-    milestones=[7, 10])
+    milestones=[7, 10, 13])
 
 
 logger = dict(
     type="RunLogger")
 
 # when we the trained model from cshuan, image is rgb
-max_epoch = 9
+max_epoch = 18
 eval_interval = 1
 checkpoint_interval = 1
 log_interval = 50
+

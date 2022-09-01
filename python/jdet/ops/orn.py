@@ -1,6 +1,6 @@
 
 import math
-import jittor as jt 
+import jittor as jt
 from jittor import nn,init
 from jittor.misc import _pair
 
@@ -15,7 +15,7 @@ typedef unsigned char uint8;
 #define CUDA_KERNEL_LOOP(i, n)  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n;i += blockDim.x * gridDim.x)
 template <typename Dtype>
 __global__ void ARF_forward_cuda_kernel(
-  const long nthreads, 
+  const long nthreads,
   const Dtype* weight_data,
   const uint8* indices_data,
   const uint16 nInputPlane,
@@ -23,7 +23,7 @@ __global__ void ARF_forward_cuda_kernel(
   const uint8 nOrientation,
   const uint8 nRotation,
   const uint16 nEntry,
-  Dtype* output_data) 
+  Dtype* output_data)
 {
   CUDA_KERNEL_LOOP(n, nthreads) {
     uint16 l = n % nEntry;
@@ -43,7 +43,7 @@ __global__ void ARF_forward_cuda_kernel(
 }
 template <typename Dtype>
 __global__ void ARF_backward_cuda_kernel(
-  const long nthreads, 
+  const long nthreads,
   const Dtype* gradWeight_data,
   const uint8* indices_data,
   const uint16 nInputPlane,
@@ -51,7 +51,7 @@ __global__ void ARF_backward_cuda_kernel(
   const uint8 nOrientation,
   const uint8 nRotation,
   const uint16 nEntry,
-  Dtype* weight_data) 
+  Dtype* weight_data)
 {
   CUDA_KERNEL_LOOP(n, nthreads) {
       uint16 l = n % nEntry;
@@ -264,9 +264,9 @@ def arf_forward(input,indices):
     nRotation = indices.shape[3]
 
     output_shape = (nOutputPlane * nRotation, nInputPlane * nOrientation, kH, kW)
-    
+
     output = jt.code(output_shape,input.dtype,[input,indices],cpu_header=ARF_CPU_HEADER,cpu_src=ARF_CPU_SRC,cuda_header=ARF_CUDA_HEADER,cuda_src=ARF_CUDA_SRC)
-    return output 
+    return output
 
 def arf_backward(indices, grad_output):
     assert indices.ndim==4 and indices.dtype=="uint8" and grad_output.dtype=="float32"
@@ -275,9 +275,9 @@ def arf_backward(indices, grad_output):
     nOutputPlane = grad_output.shape[0] // nRotation
     nInputPlane = grad_output.shape[1] // nOrientation
 
-    output_shape = (nOutputPlane, nInputPlane, nOrientation, kH, kW)    
+    output_shape = (nOutputPlane, nInputPlane, nOrientation, kH, kW)
     output = jt.code(output_shape,grad_output.dtype,[indices,grad_output],cpu_header=ARF_CPU_HEADER,cpu_src=ARF_CPU_GRAD_SRC,cuda_header=ARF_CUDA_HEADER,cuda_src=ARF_CUDA_GRAD_SRC)
-    return output 
+    return output
 
 
 RIE_CPU_HEADER=r'''
@@ -299,7 +299,7 @@ void RIE_forward_cpu_kernel(
   uint16 i;
   uint16 j;
   uint8 l;
-  
+
   #pragma omp parallel for private(i, j, l)
   for (i = 0; i < nBatch; i++) {
     for (j = 0; j < nFeature; j++) {
@@ -404,19 +404,19 @@ typedef unsigned char uint8;
 #define CUDA_KERNEL_LOOP(i, n)  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n;i += blockDim.x * gridDim.x)
 template <typename Dtype>
 __global__ void RIE_forward_cuda_kernel(
-  const uint32 nthreads, 
+  const uint32 nthreads,
   const Dtype* feature_data,
   const uint16 nBatch,
   const uint16 nFeature,
   const uint8 nOrientation,
   uint8* mainDirection_data,
-  Dtype* aligned_data) 
+  Dtype* aligned_data)
 {
   CUDA_KERNEL_LOOP(n, nthreads) {
     const uint16 j = n % nFeature;
     const uint16 i = n / nFeature;
     uint8 l;
-    
+
     uint8 *direction = mainDirection_data + i * nFeature + j;
     Dtype maxVal = -FLT_MAX;
     for (l = 0; l < nOrientation; l++) {
@@ -437,23 +437,23 @@ __global__ void RIE_forward_cuda_kernel(
                                    + j * (nOrientation)
                                    + alignedIndex;
       *target = src;
-    } 
+    }
   }
 }
 
 template <typename Dtype>
 __global__ void RIE_backward_cuda_kernel(
-  const uint32 nthreads, 
+  const uint32 nthreads,
   const Dtype* aligned_data,
   const uint8* mainDirection_data,
   const uint16 nBatch,
   const uint16 nFeature,
   const uint8 nOrientation,
-  Dtype* feature_data) 
+  Dtype* feature_data)
 {
   CUDA_KERNEL_LOOP(n, nthreads) {
     uint8 l;
-    const uint16 j = n % nFeature; 
+    const uint16 j = n % nFeature;
     const uint16 i = n / nFeature;
     const uint8 direction = *(mainDirection_data + i * nFeature + j);
     for (l = 0; l < nOrientation; l++) {
@@ -588,7 +588,7 @@ class RotationInvariantEncoding(nn.Module):
     def execute(self, input):
         output,d = rotation_invariant_encoding(input, self.nOrientation)
         if self.return_direction:
-            return output,d 
+            return output,d
         else:
             return output
 
@@ -625,7 +625,7 @@ class ORConv2d(nn.Conv2d):
         assert (math.log(self.nRotation) + 1e-5) % math.log(2) < 1e-3, 'invalid nRotation {}'.format(self.nRotation)
 
         super(ORConv2d, self).__init__(
-        in_channels, out_channels, kernel_size, 
+        in_channels, out_channels, kernel_size,
         stride, padding, dilation, groups, bias)
         self.indices = self.get_indices().stop_grad()
 
@@ -755,7 +755,7 @@ def test_arf():
     print(output.size())
     g1 = jt.grad(output.sum(),input)
     print(g1.mean())
-    
+
     input = jt.randn((8,16,32,32))
     orconv = ORConv2d(16, int(16 / 8), kernel_size=3, padding=1, arf_config=(1, 8))
     output = orconv(input)
@@ -781,4 +781,4 @@ if __name__ == "__main__":
     test_arf()
     test_rie()
     test_rip()
-            
+

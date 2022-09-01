@@ -234,7 +234,7 @@ def voc_eval(detpath,
 
 
 def voc_eval_dota(dets,gts,iou_func,ovthresh=0.5,use_07_metric=False):
-    dets = np.array(dets.tolist())
+    dets = np.array(dets.tolist()) # [N, 10]
     npos = sum([sum(~gts[k]["difficult"]) for k in gts])
     nd = len(dets)
     if nd==0 or npos==0:
@@ -253,10 +253,10 @@ def voc_eval_dota(dets,gts,iou_func,ovthresh=0.5,use_07_metric=False):
     tp = np.zeros(nd)
     fp = np.zeros(nd)
     for d,det in enumerate(dets):
-        bb = det[1:].astype(float)
+        bb = det[1:].astype(float) # [8]
         ovmax = -np.inf
         R = gts[int(det[0])]
-        BBGT = R["box"].astype(float)
+        BBGT = R["box"].astype(float) # [n_gt_boxes, 8]
 
         ## compute det bb with each BBGT
         if BBGT.size > 0:
@@ -324,6 +324,9 @@ def voc_eval_dota(dets,gts,iou_func,ovthresh=0.5,use_07_metric=False):
 
     # print('npos num:', npos)
     # print("n dets",nd)
+    fp2 = 1 - tp
+    if not np.allclose(fp, fp2):
+        __import__('pdb').set_trace()
     fp = np.cumsum(fp)
     tp = np.cumsum(tp)
 

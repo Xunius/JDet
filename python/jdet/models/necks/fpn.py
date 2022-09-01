@@ -1,4 +1,4 @@
-import jittor as jt 
+import jittor as jt
 from jittor import nn
 import warnings
 
@@ -76,25 +76,25 @@ class FPN(nn.Module):
                  upsample_div_factor=1):
         super(FPN, self).__init__()
         assert isinstance(in_channels, list)
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.num_ins = len(in_channels)
-        self.num_outs = num_outs
-        self.relu_before_extra_convs = relu_before_extra_convs
-        self.no_norm_on_lateral = no_norm_on_lateral
-        self.upsample_cfg = upsample_cfg.copy()
-        self.upsample_div_factor = upsample_div_factor
+        self.in_channels = in_channels  # [256, 512, 1024, 2048]
+        self.out_channels = out_channels # 256
+        self.num_ins = len(in_channels)  # 4
+        self.num_outs = num_outs # 5
+        self.relu_before_extra_convs = relu_before_extra_convs  # False
+        self.no_norm_on_lateral = no_norm_on_lateral  # False
+        self.upsample_cfg = upsample_cfg.copy() # mode: 'nearest'
+        self.upsample_div_factor = upsample_div_factor # 1
         if end_level == -1:
-            self.backbone_end_level = self.num_ins
+            self.backbone_end_level = self.num_ins  # 4
             assert num_outs >= self.num_ins - start_level
         else:
             # if end_level < inputs, no extra level is allowed
             self.backbone_end_level = end_level
             assert end_level <= len(in_channels)
             assert num_outs == end_level - start_level
-        self.start_level = start_level
-        self.end_level = end_level
-        self.add_extra_convs = add_extra_convs
+        self.start_level = start_level  # 1
+        self.end_level = end_level  # -1
+        self.add_extra_convs = add_extra_convs  # 'on_input'
         assert isinstance(add_extra_convs, (str, bool))
         if isinstance(add_extra_convs, str):
             assert add_extra_convs in ('on_input', 'on_lateral', 'on_output')
@@ -123,7 +123,7 @@ class FPN(nn.Module):
             self.fpn_convs.append(fpn_conv)
 
         # add extra conv layers (e.g., RetinaNet)
-        extra_levels = num_outs - self.backbone_end_level + self.start_level
+        extra_levels = num_outs - self.backbone_end_level + self.start_level # 2
         if self.add_extra_convs and extra_levels >= 1:
             for i in range(extra_levels):
                 if i == 0 and self.add_extra_convs == 'on_input':

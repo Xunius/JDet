@@ -1,9 +1,9 @@
 import jittor as jt
-from jittor.dataset import Dataset 
+from jittor.dataset import Dataset
 
-import os 
+import os
 from PIL import Image
-import numpy as np 
+import numpy as np
 
 from jdet.utils.registry import DATASETS
 from jdet.models.boxes.box_ops import rotated_box_to_bbox_np
@@ -36,16 +36,16 @@ class CustomDataset(Dataset):
         if (dataset_dir is not None):
             assert(images_dir is None)
             assert(annotations_file is None)
-            self.images_dir = os.path.abspath(os.path.join(dataset_dir, "images")) 
+            self.images_dir = os.path.abspath(os.path.join(dataset_dir, "images"))
             self.annotations_file = os.path.abspath(os.path.join(dataset_dir, "labels.pkl"))
         else:
             assert(images_dir is not None)
             assert(annotations_file is not None)
-            self.images_dir = os.path.abspath(images_dir) 
+            self.images_dir = os.path.abspath(images_dir)
             self.annotations_file = os.path.abspath(annotations_file)
 
         self.transforms = Compose(transforms)
-        
+
         self.img_infos = jt.load(self.annotations_file)
         if filter_empty_gt:
             self.img_infos = self._filter_imgs(filter_min_size)
@@ -66,7 +66,7 @@ class CustomDataset(Dataset):
         img_path = os.path.join(self.images_dir, img_info["filename"])
         image = Image.open(img_path).convert("RGB")
 
-        width,height = image.size 
+        width,height = image.size
         assert width == img_info['width'] and height == img_info["height"],"image size is different from annotations"
 
         hboxes,polys = rotated_box_to_bbox_np(anno["bboxes"])
@@ -103,8 +103,8 @@ class CustomDataset(Dataset):
         batch_imgs = np.zeros((N,3,max_height,max_width),dtype=np.float32)
         for i,image in enumerate(imgs):
             batch_imgs[i,:,:image.shape[-2],:image.shape[-1]] = image
-        
-        return batch_imgs,anns 
+
+        return batch_imgs,anns
 
     def __getitem__(self, idx):
         if "BATCH_IDX" in os.environ:
@@ -114,7 +114,7 @@ class CustomDataset(Dataset):
         if self.transforms is not None:
             image, anno = self.transforms(image, anno)
 
-        return image, anno 
+        return image, anno
 
     def evaluate(self,results,work_dir,epoch,logger=None):
-        raise NotImplementedError 
+        raise NotImplementedError

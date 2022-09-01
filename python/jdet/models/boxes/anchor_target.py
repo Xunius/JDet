@@ -1,8 +1,10 @@
+import numpy as np
 import jittor as jt
 
 from .sampler import PseudoSampler
 from jdet.utils.general import multi_apply,unmap
 from jdet.utils.registry import build_from_cfg,BOXES
+from jdet.models.boxes.box_ops import rotated_box_to_bbox
 
 
 def assign_and_sample(bboxes, gt_bboxes, gt_bboxes_ignore, gt_labels, cfg):
@@ -45,7 +47,7 @@ def anchor_target(anchor_list,
     assert len(anchor_list) == len(valid_flag_list) == num_imgs
 
     # anchor number of multi levels
-    num_level_anchors = [anchors.size(0) for anchors in anchor_list[0]]
+    num_level_anchors = [anchors.size(0) for anchors in anchor_list[0]] # [16384, 4096, 1024, 256, 64]
     # concat all level anchors and flags to a single tensor
     for i in range(num_imgs):
         assert len(anchor_list[i]) == len(valid_flag_list[i])
@@ -92,7 +94,7 @@ def images_to_levels(target, num_level_anchors):
 
     [target_img0, target_img1] -> [target_level0, target_level1, ...]
     """
-    target = jt.stack(target, 0)
+    target = jt.stack(target, 0) # [B, 21824, 5]
     level_targets = []
     start = 0
     for n in num_level_anchors:
@@ -101,6 +103,67 @@ def images_to_levels(target, num_level_anchors):
         start = end
     return level_targets
 
+def initial_assign(flat_anchors,
+                         valid_flags,
+                         gt_bboxes,
+                         gt_bboxes_ignore,
+                         img_meta,
+                         n_ratios,
+                         n_angles,
+                         n_scales,
+                         default_idx=0,
+                         cfg=None,
+                         sampling=True,
+                         ):
+
+    inside_flags = anchor_inside_flags(flat_anchors, valid_flags,
+                                       img_meta['img_shape'][:2],
+                                       cfg.get('allowed_border', -1))
+    if not inside_flags.any(0):
+        return (None,) * 6
+    # assign gt and sample anchors
+    anchors = flat_anchors[inside_flags, :] # TODO: this may fail if some anchors are not valid
+    anchors = anchors.detach()
+    n_anchors = n_ratios * n_angles * n_scales
+    nn = anchors.shape[0] // n_anchors  # nn: number of locations in feature map, e.g. 128*128
+
+    # assign ground truth to feature map location
+    anchors_xc = anchors[::n_anchors, 0]
+    anchors_yc = anchors[::n_anchors, 1]
+    gt_xc = gt_bboxes[:, 0]
+    gt_yc = gt_bboxes[:, 1]
+    ctr_diff = (anchors_xc[:, None] - gt_xc[None, :])**2 + (anchors_yc[:, None] - gt_yc[None, :])**2
+    xyidx = jt.argmin(ctr_diff, 0)[0]
+
+    anchors_1 = anchors[:n_anchors].reshape(n_ratios, n_scales, n_angles, -1)
+
+    # rotate boxes to horizontal, to compute ratios
+    anchors_hori = rotated_box_to_bbox(anchors_1[:, 0, 0])
+    gt_hori = rotated_box_to_bbox(gt_bboxes)
+
+    # comparae H/W ratios
+    bbox_ratio = (anchors_hori[:, 3] - anchors_hori[:, 1]) / (anchors_hori[:, 2] - anchors_hori[:, 0])
+    gt_ratio = (gt_hori[:, 3] - gt_hori[:, 1]) / (gt_hori[:, 2] - gt_hori[:, 0])
+    ratio_diff = jt.abs(bbox_ratio[:, None] - gt_ratio[None, :])
+    ratio_idx = jt.argmin(ratio_diff, 0)[0]
+
+    # compare angles
+    bbox_angle = anchors_1[0, 0, :, -1]
+    gt_angle = gt_bboxes[:, -1]
+    angle_diff = (bbox_angle[:, None] - gt_angle[None, :]) % np.pi
+
+    angle_idx = jt.argmin(angle_diff, 0)[0]
+
+    # combine ratio with angle diffs
+    aidx = angle_idx + ratio_idx * n_angles * n_scales
+
+    # select the closest anchor where a ground truth is assigned, use default anchor (square
+    # box with no rotation elsewhere
+    idx = jt.ones(nn, dtype='int') * default_idx
+    idx[xyidx] = aidx
+    idx = np.array(idx)
+
+    return idx
 
 def anchor_target_single(flat_anchors,
                          valid_flags,
@@ -119,7 +182,7 @@ def anchor_target_single(flat_anchors,
         bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
     bbox_coder = build_from_cfg(bbox_coder_cfg, BOXES)
     # Set True to use IoULoss
-    reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
+    reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)  # False
 
     inside_flags = anchor_inside_flags(flat_anchors, valid_flags,
                                        img_meta['img_shape'][:2],

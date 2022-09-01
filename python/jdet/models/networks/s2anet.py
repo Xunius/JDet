@@ -1,5 +1,5 @@
-import jittor as jt 
-from jittor import nn 
+import jittor as jt
+from jittor import nn
 
 from jdet.utils.registry import MODELS,build_from_cfg,BACKBONES,HEADS,NECKS
 
@@ -28,10 +28,10 @@ class S2ANet(nn.Module):
             outputs: train mode will be losses val mode will be results
         '''
         features = self.backbone(images)
-        
+
         if self.neck:
             features = self.neck(features)
-        
+
         outputs = self.bbox_head(features, targets)
-        
+
         return outputs

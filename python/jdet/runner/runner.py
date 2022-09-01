@@ -7,7 +7,7 @@ import jdet
 import pickle
 import datetime
 from jdet.config import get_cfg,save_cfg
-from jdet.utils.visualization import visualize_results
+from jdet.utils.visualization import visualize_results, visualize_results_with_gt
 from jdet.utils.registry import build_from_cfg,MODELS,SCHEDULERS,DATASETS,HOOKS,OPTIMS
 from jdet.config import get_classes_by_name
 from jdet.utils.general import build_file, current_time, sync,check_file,check_interval,parse_losses,search_ckpt
@@ -17,6 +17,29 @@ import shutil
 from tqdm import tqdm
 from jittor_utils import auto_diff
 import copy
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+def draw_PR(result_dict, save_folder):
+
+    fig, axes = plt.subplots(nrows=2, ncols=5, sharex=True, sharey=True, figsize=(12, 5))
+    for ii, (cls, vv) in enumerate(result_dict.items()):
+        ax = axes.flatten()[ii]
+        pii = vv['prec']
+        rii = vv['rec']
+        apii = vv['AP']
+        ax.plot(rii, pii, 'b-')
+        ax.set_xlabel('Recall')
+        ax.set_ylabel('Precision')
+        ax.set_title('%s AP=%.4f' %(cls, apii), fontsize=9)
+        ax.grid(True, axis='both')
+
+    fig.tight_layout()
+    filename = os.path.join(save_folder, 'PR_curve.png')
+    fig.savefig(filename, dpi=100, bbox_inchec='tight')
+    plt.close(fig)
+    return
 
 class Runner:
     def __init__(self):
@@ -25,7 +48,7 @@ class Runner:
         self.flip_test = [] if cfg.flip_test is None else cfg.flip_test
         self.work_dir = cfg.work_dir
 
-        self.max_epoch = cfg.max_epoch 
+        self.max_epoch = cfg.max_epoch
         self.max_iter = cfg.max_iter
         assert (self.max_iter is None)^(self.max_epoch is None),"You must set max_iter or max_epoch"
 
@@ -33,7 +56,7 @@ class Runner:
         self.eval_interval = cfg.eval_interval
         self.log_interval = cfg.log_interval
         self.resume_path = cfg.resume_path
-    
+
         self.model = build_from_cfg(cfg.model,MODELS)
         if (cfg.parameter_groups_generator):
             params = build_from_cfg(cfg.parameter_groups_generator,MODELS,named_params=self.model.named_parameters(), model=self.model)
@@ -44,7 +67,7 @@ class Runner:
         self.train_dataset = build_from_cfg(cfg.dataset.train,DATASETS,drop_last=jt.in_mpi)
         self.val_dataset = build_from_cfg(cfg.dataset.val,DATASETS)
         self.test_dataset = build_from_cfg(cfg.dataset.test,DATASETS)
-        
+
         self.logger = build_from_cfg(self.cfg.logger,HOOKS,work_dir=self.work_dir)
 
         save_file = build_file(self.work_dir,prefix="config.yaml")
@@ -63,7 +86,7 @@ class Runner:
 
         if (cfg.pretrained_weights):
             self.load(cfg.pretrained_weights, model_only=True)
-        
+
         if self.resume_path is None:
             self.resume_path = search_ckpt(self.work_dir)
         if check_file(self.resume_path):
@@ -76,10 +99,10 @@ class Runner:
             return self.epoch>=self.max_epoch
         else:
             return self.iter>=self.max_iter
-    
+
     def run(self):
         self.logger.print_log("Start running")
-        
+
         while not self.finish:
             self.train()
             if check_interval(self.epoch,self.eval_interval) and False:
@@ -87,7 +110,8 @@ class Runner:
                 self.val()
             if check_interval(self.epoch,self.checkpoint_interval):
                 self.save()
-        self.test()
+        #self.test()
+        self.val()
 
     def test_time(self):
         warmup = 10
@@ -149,16 +173,18 @@ class Runner:
                 # is_main use jt.rank==0, so its scope must have no jt.Vars
                 if jt.rank==0:
                     self.logger.log(data)
-            
+
             self.iter+=1
             if self.finish:
                 break
+        print('##', self.epoch, '/', self.max_epoch, self.finish)
         self.epoch +=1
 
 
     @jt.no_grad()
     @jt.single_process_scope()
     def run_on_images(self,save_dir=None,**kwargs):
+        save_dir = os.path.join(self.work_dir, 'vis_test')
         if save_dir:
             os.makedirs(save_dir, exist_ok=True)
         self.model.eval()
@@ -181,10 +207,17 @@ class Runner:
             results = []
             for batch_idx,(images,targets) in tqdm(enumerate(self.val_dataset),total=len(self.val_dataset)):
                 result = self.model(images,targets)
+
+                save_dir = os.path.join(self.work_dir, 'detections')
+                visualize_results_with_gt(sync(result), sync(targets),
+                        self.val_dataset.CLASSES, save_dir)
+
                 results.extend([(r,t) for r,t in zip(sync(result),sync(targets))])
-            eval_results = self.val_dataset.evaluate(results,self.work_dir,self.epoch,logger=self.logger)
+            eval_results, prec_rec_result = self.val_dataset.evaluate(results,self.work_dir,self.epoch,logger=self.logger)
 
             self.logger.log(eval_results,iter=self.iter)
+            draw_PR(prec_rec_result, self.work_dir)
+
 
     @jt.no_grad()
     @jt.single_process_scope()
@@ -240,7 +273,7 @@ class Runner:
         save_file = build_file(self.work_dir,prefix=f"checkpoints/ckpt_{self.epoch}.pkl")
         jt.save(save_data,save_file)
         print("saved")
-    
+
     def load(self, load_path, model_only=False):
         resume_data = jt.load(load_path)
 
@@ -249,7 +282,7 @@ class Runner:
             self.epoch = meta.get("epoch",self.epoch)
             self.iter = meta.get("iter",self.iter)
             self.max_iter = meta.get("max_iter",self.max_iter)
-            self.max_epoch = meta.get("max_epoch",self.max_epoch)
+            #self.max_epoch = meta.get("max_epoch",self.max_epoch)
             self.scheduler.load_parameters(resume_data.get("scheduler",dict()))
             self.optimizer.load_parameters(resume_data.get("optimizer",dict()))
         if ("model" in resume_data):

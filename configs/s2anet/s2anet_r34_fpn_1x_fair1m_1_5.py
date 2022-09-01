@@ -6,27 +6,28 @@ dataset_root = '/root/autodl-tmp/dataset/'
 model = dict(
     type='S2ANet',
     backbone=dict(
-        type='Resnet50',
+        type='Resnet34',
         frozen_stages=1,
         return_stages=["layer1","layer2","layer3","layer4"],
         pretrained= True),
     neck=dict(
         type='FPN',
-        in_channels=[256, 512, 1024, 2048],
-        out_channels=256,
+        in_channels=[64, 128, 256, 512],
+        out_channels=128,
         start_level=1,
         add_extra_convs="on_input",
-        num_outs=5),
+        num_outs=4),
     bbox_head=dict(
         type='S2ANetHead',
         num_classes=11,
-        in_channels=256,
-        feat_channels=256,
-        stacked_convs=2,
-        with_orconv=True,
+        in_channels=128,
+        feat_channels=128,
+        stacked_convs=1,
+        with_orconv=False,
         #anchor_ratios=[1.0],
-        anchor_ratios=[1.0, 2.0, 6.0, 10.0],  # needs to put 1.0 at the 1st
-        anchor_strides=[8, 16, 32, 64, 128],
+        anchor_ratios=[1.0, 0.5, 2.0, 6.0, 8.0],  # needs to put 1.0 at the 1st
+        #anchor_strides=[8, 16, 32, 64, 128],
+        anchor_strides=[8, 16, 32, 64],
         anchor_scales=[4],
         #anchor_scales=[2,4,6],
         anchor_angles=[0, 30, 60, 90, 120, 150],  # needs to put 0 at the 1st
@@ -49,10 +50,9 @@ model = dict(
         loss_odm_bbox=dict(
             type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
         test_cfg=dict(
-            nms_pre=4000,
+            nms_pre=2000,
             min_bbox_size=0,
-            #score_thr=0.05,
-            score_thr=0.10,
+            score_thr=0.05,
             nms=dict(type='nms_rotated', iou_thr=0.1),
             max_per_img=2000),
         train_cfg=dict(
@@ -99,10 +99,10 @@ dataset = dict(
                 max_size=1024
             ),
             dict(type='RotatedRandomFlip', prob=0.5),
-            dict(
-            type="RandomRotateAug",
-            random_rotate_on=True,
-            ),
+            #dict(
+            #type="RandomRotateAug",
+            #random_rotate_on=True,
+            #),
             dict(
                 type = "Pad",
                 size_divisor=32),
@@ -117,15 +117,15 @@ dataset = dict(
         num_workers=4,
         shuffle=True,
         balance_category={
-            "Airplane": 1.0,
+            "Airplane": 0.5,
             "Ship": 1,
             "Vehicle": 1,
             "Basketball_Court": 1.0,
             "Tennis_Court": 1.0,
-            "Football_Field": 1.0,
-            "Baseball_Field": 1.0,
-            "Intersection": 1.0,
-            "Roundabout": 1.0,
+            "Football_Field": 0.5,
+            "Baseball_Field": 0.5,
+            "Intersection": 1,
+            "Roundabout": 0.5,
             "Bridge": 1,
         },
         #balance_category={
@@ -160,21 +160,8 @@ dataset = dict(
                 std = [58.395, 57.12, 57.375],
                 to_bgr=False),
         ],
-        balance_category=False,
-        #balance_category={
-        #"Airplane": 0.1,
-        #"Ship": 0.1,
-        #"Vehicle": 0.1,
-        #"Basketball_Court": 0.1,
-        #"Tennis_Court": 0.1,
-        #"Football_Field": 0.1,
-        #"Baseball_Field": 0.1,
-        #"Intersection": 0.1,
-        #"Roundabout": 0.1,
-        #"Bridge": 0.1,
-        #},
-        batch_size=1,
-        num_workers=2,
+        batch_size=2,
+        num_workers=4,
         shuffle=False
     ),
     test=dict(
@@ -216,15 +203,15 @@ scheduler = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    gamma=0.2,
-    milestones=[7, 10])
+    milestones=[5, 7, 10])
 
 
 logger = dict(
     type="RunLogger")
 
 # when we the trained model from cshuan, image is rgb
-max_epoch = 9
-eval_interval = 1
+max_epoch = 12
+eval_interval = 4
 checkpoint_interval = 1
 log_interval = 50
+

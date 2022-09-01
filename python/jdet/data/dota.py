@@ -96,17 +96,17 @@ class DOTADataset(CustomDataset):
             det_labels += 1
             if det_polys.size>0:
                 idx1 = np.ones((det_labels.shape[0],1))*img_idx
-                det = np.concatenate([idx1,det_polys,det_scores.reshape(-1,1),det_labels.reshape(-1,1)],axis=1)
+                det = np.concatenate([idx1,det_polys,det_scores.reshape(-1,1),det_labels.reshape(-1,1)],axis=1) # [n_dets_in_img, 11]
                 dets.append(det)
             
             scale_factor = target["scale_factor"]
-            gt_polys = target["polys"]
+            gt_polys = target["polys"]  # [n_gt_boxes, 8]
             gt_polys /= scale_factor
 
             if gt_polys.size>0:
                 gt_labels = target["labels"].reshape(-1,1)
                 idx2 = np.ones((gt_labels.shape[0],1))*img_idx
-                gt = np.concatenate([idx2,gt_polys,gt_labels],axis=1)
+                gt = np.concatenate([idx2,gt_polys,gt_labels],axis=1) # [n_gt_boxes, 10]
                 gts.append(gt)
             diffcult_polys[img_idx] = target["polys_ignore"]/scale_factor
         if len(dets) == 0:
@@ -119,14 +119,16 @@ class DOTADataset(CustomDataset):
         dets = np.concatenate(dets)
         gts = np.concatenate(gts)
         aps = {}
+        all_pr = {}
+
         for i,classname in tqdm(enumerate(self.CLASSES),total=len(self.CLASSES)):
-            c_dets = dets[dets[:,-1]==(i+1)][:,:-1]
-            c_gts = gts[gts[:,-1]==(i+1)][:,:-1]
+            c_dets = dets[dets[:,-1]==(i+1)][:,:-1] # [n_dets, 10]
+            c_gts = gts[gts[:,-1]==(i+1)][:,:-1]  # [n_gt_boxes, 9]
             img_idx = gts[:,0].copy()
             classname_gts = {}
-            for idx in np.unique(img_idx):
-                g = c_gts[c_gts[:,0]==idx,:][:,1:]
-                dg = diffcult_polys[idx].copy().reshape(-1,8)
+            for idx in np.unique(img_idx):  # loop through images
+                g = c_gts[c_gts[:,0]==idx,:][:,1:]  # [n_gt_boxes, 8]
+                dg = diffcult_polys[idx].copy().reshape(-1,8) # this is never > 1
                 diffculty = np.zeros(g.shape[0]+dg.shape[0])
                 diffculty[int(g.shape[0]):]=1
                 diffculty = diffculty.astype(bool)
@@ -134,11 +136,13 @@ class DOTADataset(CustomDataset):
                 classname_gts[idx] = {"box":g.copy(),"det":[False for i in range(len(g))],'difficult':diffculty.copy()}
             rec, prec, ap = voc_eval_dota(c_dets,classname_gts,iou_func=iou_poly)
             aps["eval/"+str(i+1)+"_"+classname+"_AP"]=ap 
+            all_pr[classname] = {'prec': prec, 'rec': rec, 'AP': ap}
         map = sum(list(aps.values()))/len(aps)
         aps["eval/0_meanAP"]=map
-        return aps
+
+        return aps, all_pr
             
-            
+
 def test_eval():
     results= jt.load("projects/s2anet/work_dirs/s2anet_r50_fpn_1x_dota/detections/val_0/val.pkl")
     results = jt.load("projects/s2anet/work_dirs/s2anet_r50_fpn_1x_dota/detections/val_rotate_balance/val.pkl")

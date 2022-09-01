@@ -343,3 +343,102 @@ def draw_bboxes(img,
 
     plt.close(fig)
     return drawed_img
+
+def draw_bboxes_with_gt(img,
+                  bboxes,
+                  gt_bboxes,
+                  labels=None,
+                  gt_labels=None,
+                  scores=None,
+                  class_names=None,
+                  score_thr=0,
+                  colors='green',
+                  gt_colors='red',
+                  thickness=1,
+                  with_text=True,
+                  font_size=10,
+                  out_file=None):
+
+    if isinstance(img, np.ndarray):
+        img = np.ascontiguousarray(img)
+    else:
+        assert(isinstance(img, str) and os.path.exists(img))
+        img = cv2.imread(img)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    assert isinstance(img,np.ndarray), "image must be a numpy array!"
+    assert isinstance(bboxes,np.ndarray), "boxes must be a numpy array!"
+    assert labels is None or (labels.shape[0]==bboxes.shape[0] and labels.ndim==1)
+    assert scores is None or (scores.shape[0]==bboxes.shape[0] and scores.ndim==1)
+    assert bboxes.shape[1] in [4,5,8] and bboxes.ndim==2
+
+    if labels is None:
+        labels = np.zeros([bboxes.shape[0]], dtype=np.int32)
+    gt_labels = np.array(gt_labels, dtype=np.int32)
+    if bboxes.shape[0] == 0:
+        if out_file is not None:
+            cv2.imwrite(out_file, img)
+        return img
+    if not scores is None:
+        idx = np.argsort(scores)
+        scores = scores[idx]
+        labels = labels[idx]
+        bboxes = bboxes[idx]
+
+    draw_funcs = {
+        4 : draw_hbb,
+        5 : draw_obb,
+        8 : draw_poly
+    }
+    draw_func = draw_funcs[bboxes.shape[1]]
+
+    if scores is None:
+        with_score = False
+    else:
+        with_score = True
+
+    n_classes = labels.max()+1
+
+    if isinstance(colors, str) and colors == 'random':
+        colors = random_colors(n_classes)
+    else:
+        colors = colors_val(colors)
+        if len(colors) == 1:
+            colors = colors * n_classes
+        assert len(colors) >= n_classes
+
+
+    height, width = img.shape[:2]
+    ax, fig = plt_init(width, height)
+    plt.imshow(img)
+
+    if with_score:
+        valid_idx = scores >= score_thr
+        bboxes = bboxes[valid_idx]
+        scores = scores[valid_idx]
+        labels = labels[valid_idx]
+
+    for i in range(bboxes.shape[0]):
+        if not with_text:
+            text = None
+        else:
+            text = f'cls: {labels[i]}' if class_names is None else class_names[labels[i]][:4]
+            if with_score:
+                text += f'|{scores[i]:.02f}'
+        draw_func(ax, bboxes[i:i+1], [text], colors[labels[i]], thickness, font_size)
+
+    for i in range(gt_bboxes.shape[0]):
+        if not with_text:
+            text = None
+        else:
+            text = f'cls: {labels[i]}' if class_names is None else class_names[gt_labels[i]][:4]
+            #if with_score:
+                #text += f'|{scores[i]:.02f}'
+        draw_func(ax, gt_bboxes[i:i+1], [text], gt_colors, thickness, font_size)
+
+    drawed_img = get_img_from_fig(fig, width, height)
+
+    if out_file is not None:
+        cv2.imwrite(out_file, drawed_img)
+
+    plt.close(fig)
+    return drawed_img
