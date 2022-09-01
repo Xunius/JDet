@@ -1,6 +1,10 @@
-
+import os
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from jdet.ops.nms_poly import iou_poly
+from shapely.geometry import Polygon
 
 def parse_gt(filename):
     """
@@ -234,7 +238,16 @@ def voc_eval(detpath,
 
 
 def voc_eval_dota(dets,gts,iou_func,ovthresh=0.5,use_07_metric=False):
+
+    def calcoverlaps(BBGT_keep, bb):
+        overlaps = []
+        for index, GT in enumerate(BBGT_keep):
+            overlap = iou_func(BBGT_keep[index], bb)
+            overlaps.append(overlap)
+        return overlaps
+
     dets = np.array(dets.tolist()) # [N, 10]
+    ori_idx = np.arange(len(dets))
     npos = sum([sum(~gts[k]["difficult"]) for k in gts])
     nd = len(dets)
     if nd==0 or npos==0:
@@ -246,6 +259,7 @@ def voc_eval_dota(dets,gts,iou_func,ovthresh=0.5,use_07_metric=False):
     # sort by confidence
     sorted_ind = np.argsort(-confidence)
     scores = confidence[sorted_ind]
+    ori_idx = ori_idx[sorted_ind]
 
     ## note the usage only in numpy not for list
     dets = dets[sorted_ind, :]
@@ -259,53 +273,11 @@ def voc_eval_dota(dets,gts,iou_func,ovthresh=0.5,use_07_metric=False):
         BBGT = R["box"].astype(float) # [n_gt_boxes, 8]
 
         ## compute det bb with each BBGT
-        if BBGT.size > 0:
-            # compute overlaps
-            # intersection
+        if len(BBGT) > 0:
 
-            # 1. calculate the overlaps between hbbs, if the iou between hbbs are 0, the iou between obbs are 0, too.
-            BBGT_xmin = np.min(BBGT[:, 0::2], axis=1)
-            BBGT_ymin = np.min(BBGT[:, 1::2], axis=1)
-            BBGT_xmax = np.max(BBGT[:, 0::2], axis=1)
-            BBGT_ymax = np.max(BBGT[:, 1::2], axis=1)
-            bb_xmin = np.min(bb[0::2])
-            bb_ymin = np.min(bb[1::2])
-            bb_xmax = np.max(bb[0::2])
-            bb_ymax = np.max(bb[1::2])
-
-            ixmin = np.maximum(BBGT_xmin, bb_xmin)
-            iymin = np.maximum(BBGT_ymin, bb_ymin)
-            ixmax = np.minimum(BBGT_xmax, bb_xmax)
-            iymax = np.minimum(BBGT_ymax, bb_ymax)
-            iw = np.maximum(ixmax - ixmin + 1., 0.)
-            ih = np.maximum(iymax - iymin + 1., 0.)
-            inters = iw * ih
-
-            # union
-            uni = ((bb_xmax - bb_xmin + 1.) * (bb_ymax - bb_ymin + 1.) +
-                   (BBGT_xmax - BBGT_xmin + 1.) *
-                   (BBGT_ymax - BBGT_ymin + 1.) - inters)
-
-            overlaps = inters / uni
-
-            BBGT_keep_mask = overlaps > 0
-            BBGT_keep = BBGT[BBGT_keep_mask, :]
-            BBGT_keep_index = np.where(overlaps > 0)[0]
-
-            def calcoverlaps(BBGT_keep, bb):
-                overlaps = []
-                for index, GT in enumerate(BBGT_keep):
-                    overlap = iou_func(BBGT_keep[index], bb)
-                    overlaps.append(overlap)
-                return overlaps
-
-            if len(BBGT_keep) > 0:
-                overlaps = calcoverlaps(BBGT_keep, bb)
-
-                ovmax = np.max(overlaps)
-                jmax = np.argmax(overlaps)
-                # pdb.set_trace()
-                jmax = BBGT_keep_index[jmax]
+            overlaps = calcoverlaps(BBGT, bb)
+            ovmax = np.max(overlaps)
+            jmax = np.argmax(overlaps)
 
         if ovmax > ovthresh:
             if not R['difficult'][jmax]:
@@ -317,26 +289,20 @@ def voc_eval_dota(dets,gts,iou_func,ovthresh=0.5,use_07_metric=False):
         else:
             fp[d] = 1.
 
+    tp_idx = ori_idx[tp==1]
+    fp_idx = ori_idx[fp==1]
+
     # compute precision recall
+    fp = np.cumsum(fp)
+    tp = np.cumsum(tp)
 
-    # print('check fp:', fp)
-    # print('check tp', tp)
-
-    # print('npos num:', npos)
-    # print("n dets",nd)
-    fp2 = 1 - tp
-    if not np.allclose(fp, fp2):
-        __import__('pdb').set_trace()
-    fpcum = np.cumsum(fp)
-    tpcum = np.cumsum(tp)
-
-    rec = tpcum / float(npos)
+    rec = tp / float(npos)
     # avoid divide by zero in case the first detection matches a difficult
     # ground truth
-    prec = tpcum / np.maximum(tpcum + fpcum, np.finfo(np.float64).eps)
+    prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
     ap = voc_ap(rec, prec, use_07_metric)
 
-    return rec, prec, ap, tp, fp
+    return rec, prec, ap, tp_idx, fp_idx
 
 def main():
     detpath = r'test_/{:s}.txt'
@@ -384,6 +350,38 @@ def main():
     print('map:', map)
     classaps = 100 * np.array(classaps)
     print('classaps: ', classaps)
+
+def draw_boxes(img_idx, det_idx, det_box, gt_boxes, score, save_dir, gt_idx=None):
+
+    fig, ax = plt.subplots()
+    det_box = det_box.reshape(4, 2)
+    det_box = np.r_[det_box, det_box[0:1]]
+    ax.plot(det_box[:,0], det_box[:, 1], 'b-')
+    det_poly = Polygon(det_box)
+
+    for ii in range(len(gt_boxes)):
+        bii = gt_boxes[ii].reshape(4,2)
+        bii = np.r_[bii, bii[0:1]]
+        pii = Polygon(bii)
+        inter_area = det_poly.intersection(pii).area
+        iou = inter_area/max(det_poly.area+pii.area-inter_area,0.01)
+
+        if gt_idx is not None and ii == gt_idx:
+            lw=3
+        else:
+            lw=1
+        ax.plot(bii[:,0], bii[:, 1], 'r-', lw=lw)
+        ax.text(bii[0][0], bii[0][1], '%.3f' %iou, color='r',
+                ha='left', va='top')
+        ax.set_aspect(1)
+
+    savepath = os.path.join(save_dir, 'bboxes_img_idx_%s_det_idx_%d_new2.png' %(str(img_idx), det_idx))
+    fig.savefig(savepath, dpi=100)
+    plt.close(fig)
+    return
+
+
+
 
 
 if __name__ == '__main__':

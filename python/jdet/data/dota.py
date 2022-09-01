@@ -12,6 +12,7 @@ import jittor as jt
 import numpy as np
 from tqdm import tqdm
 import pickle
+import copy
 
 def s2anet_post(result):
     dets,labels = result 
@@ -123,29 +124,33 @@ class DOTADataset(CustomDataset):
         aps = {}
         all_pr = {}
 
-        examine_class = 'Vehicle'
+        examine_class = 'Ship'
 
-        for i,classname in tqdm(enumerate(self.CLASSES),total=len(self.CLASSES)):
+        #for i,classname in tqdm(enumerate(self.CLASSES),total=len(self.CLASSES)):
+        for i,classname in enumerate(self.CLASSES):
+            print('classname:', classname)
+            if classname != examine_class:
+                continue
             c_dets = dets[dets[:,-1]==(i+1)][:,:-1] # [n_dets, 10]
             c_gts = gts[gts[:,-1]==(i+1)][:,:-1]  # [n_gt_boxes, 9]
             img_idx = gts[:,0].copy()
             classname_gts = {}
-            for idx in np.unique(img_idx):  # loop through images
+            for idx in np.unique(img_idx).astype('int'):  # loop through images
                 g = c_gts[c_gts[:,0]==idx,:][:,1:]  # [n_gt_boxes, 8]
                 dg = diffcult_polys[idx].copy().reshape(-1,8) # this is never > 1
                 diffculty = np.zeros(g.shape[0]+dg.shape[0])
                 diffculty[int(g.shape[0]):]=1
                 diffculty = diffculty.astype(bool)
                 g = np.concatenate([g,dg])
-                classname_gts[idx] = {"box":g.copy(),"det":[False for i in range(len(g))],'difficult':diffculty.copy()}
-            rec, prec, ap, tp, fp = voc_eval_dota(c_dets,classname_gts,iou_func=iou_poly)
+                classname_gts[idx] = {"box":g.copy(),"det":[False]*len(g),
+                        'difficult':diffculty.copy(),}
 
+            rec, prec, ap, tp_idx, fp_idx = voc_eval_dota(c_dets,classname_gts,iou_func=iou_poly)
 
             # get true positives
-            if len(tp) > 0 and classname == examine_class:
+            if len(tp_idx) > 0 and classname == examine_class:
                 save_dir = os.path.join(work_dir, 'tp_detections_%s' %classname)
                 os.makedirs(save_dir, exist_ok=True)
-                tp_idx = np.where(tp==1)[0]
                 tp_img_idx = np.unique([int(c_dets[jj][0]) for jj in tp_idx])
                 tp_dets = c_dets[tp_idx]
 
@@ -155,7 +160,11 @@ class DOTADataset(CustomDataset):
                 for jj in tp_img_idx:
                     idxjj = np.where(tp_dets[:,0]==jj)[0]
                     tp_det_imgs.append([tp_dets[idxjj, 1:9], tp_dets[idxjj, 9], np.ones(len(idxjj), dtype='int')*i])
-                    tp_gts.append(results[jj][1])
+                    gt_imgs = copy.deepcopy(results[jj][1])
+                    gt_cls_idx = gt_imgs['labels'] == i+1
+                    for kk in ['rboxes', 'hboxes', 'polys', 'labels']:
+                        gt_imgs[kk] = gt_imgs[kk][gt_cls_idx]
+                    tp_gts.append(gt_imgs)
 
                 visualize_results_with_gt(tp_det_imgs, tp_gts, self.CLASSES, save_dir)
                 with open(os.path.join(save_dir, 'tp_dets.dat'), 'wb') as fout:
@@ -163,11 +172,10 @@ class DOTADataset(CustomDataset):
 
 
             # get false positives
-            if len(fp) > 0 and classname == examine_class:
+            if len(fp_idx) > 0 and classname == examine_class:
                 save_dir = os.path.join(work_dir, 'fp_detections_%s' %classname)
                 os.makedirs(save_dir, exist_ok=True)
 
-                fp_idx = np.where(fp==1)[0]
                 fp_img_idx = np.unique([int(c_dets[jj][0]) for jj in fp_idx])
                 fp_dets = c_dets[fp_idx]
                 # group by imgs
@@ -176,7 +184,11 @@ class DOTADataset(CustomDataset):
                 for jj in fp_img_idx:
                     idxjj = np.where(fp_dets[:,0]==jj)[0]
                     fp_det_imgs.append([fp_dets[idxjj, 1:9], fp_dets[idxjj, 9], np.ones(len(idxjj), dtype='int')*i])
-                    fp_gts.append(results[jj][1])
+                    gt_imgs = copy.deepcopy(results[jj][1])
+                    gt_cls_idx = gt_imgs['labels'] == i+1
+                    for kk in ['rboxes', 'hboxes', 'polys', 'labels']:
+                        gt_imgs[kk] = gt_imgs[kk][gt_cls_idx]
+                    fp_gts.append(gt_imgs)
 
                 visualize_results_with_gt(fp_det_imgs, fp_gts, self.CLASSES, save_dir)
                 with open(os.path.join(save_dir, 'fp_dets.dat'), 'wb') as fout:

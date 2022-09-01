@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from jdet.models.boxes.box_ops import poly_to_rotated_box_np
 
 FOLDER = '/root/autodl-tmp/JDet/work_dirs/s2anet_r50_fpn_1x_fair1m_1_5'
-CLASS = 'Ship'
+CLASS = 'Bridge'
 
 def get_data(filename):
 
@@ -24,14 +24,14 @@ def get_data(filename):
     ang = (ang / np.pi * 180) % 180
     num = len(data)
     ratio = h/w
-    res = {'num': num,
-           'xc': xc,
-           'yc': yc,
-           'w': w,
-           'h': h,
-           'ang': ang,
-           'ratio': ratio,
-           'score': data[:,-1],
+    res = {'No.': num,
+           'Xc': xc,
+           'Yc': yc,
+           'W': w,
+           'H': h,
+           'Angle': ang,
+           'H/W': ratio,
+           'Score': data[:,-1],
            }
 
     return res
@@ -46,7 +46,7 @@ if __name__ == '__main__':
 
 
     figure, axes = plt.subplots(nrows=2, ncols=4, figsize=(10, 6))
-    titles = ['num', 'xc', 'yc', 'w', 'h', 'ang', 'ratio', 'score']
+    titles = ['No.', 'Xc', 'Yc', 'W', 'H', 'Angle', 'H/W', 'Score']
 
     for ii, titleii in enumerate(titles):
 
@@ -54,7 +54,7 @@ if __name__ == '__main__':
         tpii = tp_data[titleii]
         fpii = fp_data[titleii]
 
-        if titleii == 'num':
+        if titleii == 'No.':
             ax.bar(0, tpii, width=0.5)
             ax.bar(1, fpii, width=0.5)
         else:

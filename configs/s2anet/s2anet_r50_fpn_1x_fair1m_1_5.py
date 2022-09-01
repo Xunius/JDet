@@ -163,8 +163,8 @@ dataset = dict(
         #balance_category=False,
         balance_category={
         "Airplane": 0,
-        "Ship": 0,
-        "Vehicle": 1,
+        "Ship": 1,
+        "Vehicle": 0,
         "Basketball_Court": 0,
         "Tennis_Court": 0,
         "Football_Field": 0,

@@ -65,6 +65,7 @@ def visualize_results_with_gt(results, targets, classnames, save_dir, **kwargs):
         gt_boxes = gt['polys']
         gt_labels = gt['labels'] - 1
         save_file = os.path.join(save_dir, os.path.split(img_file)[-1])
+        print('img_file', img_file, 'n boxes', len(bboxes))
         draw_bboxes_with_gt(img_file, bboxes, gt_boxes, labels=labels,
                 gt_labels=gt_labels,
                 scores=scores,
