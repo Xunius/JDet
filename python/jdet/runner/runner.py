@@ -1,5 +1,6 @@
 from genericpath import isfile
 import time
+from pprint import pprint
 import jittor as jt
 from tqdm import tqdm
 import numpy as np
@@ -208,14 +209,14 @@ class Runner:
             for batch_idx,(images,targets) in tqdm(enumerate(self.val_dataset),total=len(self.val_dataset)):
                 result = self.model(images,targets)
 
-                save_dir = os.path.join(self.work_dir, 'detections')
-                visualize_results_with_gt(sync(result), sync(targets),
-                        self.val_dataset.CLASSES, save_dir)
-
+                #save_dir = os.path.join(self.work_dir, 'detections')
+                #visualize_results_with_gt(sync(result), sync(targets),
+                        #self.val_dataset.CLASSES, save_dir)
                 results.extend([(r,t) for r,t in zip(sync(result),sync(targets))])
             eval_results, prec_rec_result = self.val_dataset.evaluate(results,self.work_dir,self.epoch,logger=self.logger)
 
             self.logger.log(eval_results,iter=self.iter)
+            pprint(eval_results)
             draw_PR(prec_rec_result, self.work_dir)
 
 

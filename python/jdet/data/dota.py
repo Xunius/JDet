@@ -6,10 +6,12 @@ from jdet.utils.registry import DATASETS
 from jdet.config.constant import get_classes_by_name
 from jdet.data.custom import CustomDataset
 from jdet.ops.nms_poly import iou_poly
+from jdet.utils.visualization import visualize_results, visualize_results_with_gt
 import os
 import jittor as jt
 import numpy as np
 from tqdm import tqdm
+import pickle
 
 def s2anet_post(result):
     dets,labels = result 
@@ -121,6 +123,8 @@ class DOTADataset(CustomDataset):
         aps = {}
         all_pr = {}
 
+        examine_class = 'Vehicle'
+
         for i,classname in tqdm(enumerate(self.CLASSES),total=len(self.CLASSES)):
             c_dets = dets[dets[:,-1]==(i+1)][:,:-1] # [n_dets, 10]
             c_gts = gts[gts[:,-1]==(i+1)][:,:-1]  # [n_gt_boxes, 9]
@@ -134,7 +138,51 @@ class DOTADataset(CustomDataset):
                 diffculty = diffculty.astype(bool)
                 g = np.concatenate([g,dg])
                 classname_gts[idx] = {"box":g.copy(),"det":[False for i in range(len(g))],'difficult':diffculty.copy()}
-            rec, prec, ap = voc_eval_dota(c_dets,classname_gts,iou_func=iou_poly)
+            rec, prec, ap, tp, fp = voc_eval_dota(c_dets,classname_gts,iou_func=iou_poly)
+
+
+            # get true positives
+            if len(tp) > 0 and classname == examine_class:
+                save_dir = os.path.join(work_dir, 'tp_detections_%s' %classname)
+                os.makedirs(save_dir, exist_ok=True)
+                tp_idx = np.where(tp==1)[0]
+                tp_img_idx = np.unique([int(c_dets[jj][0]) for jj in tp_idx])
+                tp_dets = c_dets[tp_idx]
+
+                # group by imgs
+                tp_det_imgs = []
+                tp_gts = []
+                for jj in tp_img_idx:
+                    idxjj = np.where(tp_dets[:,0]==jj)[0]
+                    tp_det_imgs.append([tp_dets[idxjj, 1:9], tp_dets[idxjj, 9], np.ones(len(idxjj), dtype='int')*i])
+                    tp_gts.append(results[jj][1])
+
+                visualize_results_with_gt(tp_det_imgs, tp_gts, self.CLASSES, save_dir)
+                with open(os.path.join(save_dir, 'tp_dets.dat'), 'wb') as fout:
+                    pickle.dump(tp_dets, fout)
+
+
+            # get false positives
+            if len(fp) > 0 and classname == examine_class:
+                save_dir = os.path.join(work_dir, 'fp_detections_%s' %classname)
+                os.makedirs(save_dir, exist_ok=True)
+
+                fp_idx = np.where(fp==1)[0]
+                fp_img_idx = np.unique([int(c_dets[jj][0]) for jj in fp_idx])
+                fp_dets = c_dets[fp_idx]
+                # group by imgs
+                fp_det_imgs = []
+                fp_gts = []
+                for jj in fp_img_idx:
+                    idxjj = np.where(fp_dets[:,0]==jj)[0]
+                    fp_det_imgs.append([fp_dets[idxjj, 1:9], fp_dets[idxjj, 9], np.ones(len(idxjj), dtype='int')*i])
+                    fp_gts.append(results[jj][1])
+
+                visualize_results_with_gt(fp_det_imgs, fp_gts, self.CLASSES, save_dir)
+                with open(os.path.join(save_dir, 'fp_dets.dat'), 'wb') as fout:
+                    pickle.dump(fp_dets, fout)
+
+
             aps["eval/"+str(i+1)+"_"+classname+"_AP"]=ap 
             all_pr[classname] = {'prec': prec, 'rec': rec, 'AP': ap}
         map = sum(list(aps.values()))/len(aps)

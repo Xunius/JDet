@@ -238,7 +238,7 @@ def voc_eval_dota(dets,gts,iou_func,ovthresh=0.5,use_07_metric=False):
     npos = sum([sum(~gts[k]["difficult"]) for k in gts])
     nd = len(dets)
     if nd==0 or npos==0:
-        return 0.,0.,0.
+        return 0.,0.,0., np.array([]), np.array([])
 
     confidence = dets[:,-1]
     dets = dets[:,:-1]
@@ -327,16 +327,16 @@ def voc_eval_dota(dets,gts,iou_func,ovthresh=0.5,use_07_metric=False):
     fp2 = 1 - tp
     if not np.allclose(fp, fp2):
         __import__('pdb').set_trace()
-    fp = np.cumsum(fp)
-    tp = np.cumsum(tp)
+    fpcum = np.cumsum(fp)
+    tpcum = np.cumsum(tp)
 
-    rec = tp / float(npos)
+    rec = tpcum / float(npos)
     # avoid divide by zero in case the first detection matches a difficult
     # ground truth
-    prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+    prec = tpcum / np.maximum(tpcum + fpcum, np.finfo(np.float64).eps)
     ap = voc_ap(rec, prec, use_07_metric)
 
-    return rec, prec, ap
+    return rec, prec, ap, tp, fp
 
 def main():
     detpath = r'test_/{:s}.txt'
