@@ -646,6 +646,10 @@ class S2ANetHead(nn.Module):
         fam_bbox_pred = fam_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
 
         reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
+
+        ## weight up angle loss
+        bbox_weights[:, -1] = 8.0 * bbox_weights[:, -1]
+
         if reg_decoded_bbox:
             # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
             # is applied directly on the decoded bounding boxes, it
@@ -686,6 +690,10 @@ class S2ANetHead(nn.Module):
         odm_bbox_pred = odm_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
 
         reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
+
+        ## weight up angle loss
+        bbox_weights[:, -1] = 8.0 * bbox_weights[:, -1]
+
         if reg_decoded_bbox:
             # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
             # is applied directly on the decoded bounding boxes, it
@@ -860,11 +868,11 @@ class S2ANetHead(nn.Module):
             padding = jt.zeros((mlvl_scores.shape[0], 1),dtype=mlvl_scores.dtype)
             mlvl_scores = jt.contrib.concat([padding, mlvl_scores], dim=1)
 
-        #det_bboxes, det_labels = multiclass_nms_rotated(mlvl_bboxes, mlvl_scores, cfg.score_thr, cfg.nms, cfg.max_per_img)
+        det_bboxes, det_labels = multiclass_nms_rotated(mlvl_bboxes, mlvl_scores, cfg.score_thr, cfg.nms, cfg.max_per_img)
         #score_factors = jt.array([0.9, 1.1, 1.1, 1, 0.9, 1, 0.9, 1.1, 0.9, 1.1])
-        score_factors = None
-        det_bboxes, det_labels = singleclass_nms_rotated(mlvl_bboxes, mlvl_scores,
-                cfg.score_thr, cfg.nms, cfg.max_per_img, score_factors=score_factors)
+        #score_factors = None
+        #det_bboxes, det_labels = singleclass_nms_rotated(mlvl_bboxes, mlvl_scores,
+                #cfg.score_thr, cfg.nms, cfg.max_per_img, score_factors=score_factors)
 
         boxes = det_bboxes[:, :5]
         scores = det_bboxes[:, 5]

@@ -118,19 +118,19 @@ class DOTADataset(CustomDataset):
                 aps["eval/"+str(i+1)+"_"+classname+"_AP"]=0 
             map = sum(list(aps.values()))/len(aps)
             aps["eval/0_meanAP"]=map
-            return aps
+            return aps, {}
         dets = np.concatenate(dets)
         gts = np.concatenate(gts)
         aps = {}
         all_pr = {}
 
-        examine_class = 'Ship'
+        examine_class = 'None'
 
         #for i,classname in tqdm(enumerate(self.CLASSES),total=len(self.CLASSES)):
         for i,classname in enumerate(self.CLASSES):
-            print('classname:', classname)
-            if classname != examine_class:
-                continue
+            #print('classname:', classname)
+            #if classname != examine_class:
+                #continue
             c_dets = dets[dets[:,-1]==(i+1)][:,:-1] # [n_dets, 10]
             c_gts = gts[gts[:,-1]==(i+1)][:,:-1]  # [n_gt_boxes, 9]
             img_idx = gts[:,0].copy()

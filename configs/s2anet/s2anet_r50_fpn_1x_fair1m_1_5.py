@@ -25,17 +25,19 @@ model = dict(
         stacked_convs=2,
         with_orconv=True,
         #anchor_ratios=[1.0],
-        anchor_ratios=[1.0, 2.0, 6.0, 10.0],  # needs to put 1.0 at the 1st
+        anchor_ratios=[1.0, 3.0, 9.0],  # needs to put 1.0 at the 1st
         anchor_strides=[8, 16, 32, 64, 128],
         anchor_scales=[4],
         #anchor_scales=[2,4,6],
-        anchor_angles=[0, 30, 60, 90, 120, 150],  # needs to put 0 at the 1st
+        anchor_angles=[0, 45, 90, 135],  # needs to put 0 at the 1st
         target_means=[.0, .0, .0, .0, .0],
         target_stds=[1.0, 1.0, 1.0, 1.0, 1.0],
         loss_fam_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
-            gamma=2.0,
+            #gamma=2.0,
+            #gamma=1.5,
+            gamma=1.0,
             alpha=0.25,
             loss_weight=1.0),
         loss_fam_bbox=dict(
@@ -43,17 +45,19 @@ model = dict(
         loss_odm_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
-            gamma=2.0,
+            #gamma=2.0,
+            #gamma=1.5,
+            gamma=1.0,
             alpha=0.25,
             loss_weight=1.0),
         loss_odm_bbox=dict(
             type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
         test_cfg=dict(
-            nms_pre=4000,
+            nms_pre=2000,
             min_bbox_size=0,
-            score_thr=0.05,
-            #score_thr=0.10,
-            nms=dict(type='nms_rotated', iou_thr=0.1),
+            #score_thr=0.20,
+            score_thr=0.10,
+            nms=dict(type='nms_rotated', iou_thr=0.05),
             max_per_img=2000),
         train_cfg=dict(
             fam_cfg=dict(
@@ -117,15 +121,15 @@ dataset = dict(
         num_workers=4,
         shuffle=True,
         balance_category={
-            "Airplane": 1.0,
+            "Airplane": 0.1,
             "Ship": 1,
             "Vehicle": 1,
-            "Basketball_Court": 1.0,
-            "Tennis_Court": 1.0,
-            "Football_Field": 1.0,
-            "Baseball_Field": 1.0,
+            "Basketball_Court": 0.5,
+            "Tennis_Court": 0.1,
+            "Football_Field": 0.2,
+            "Baseball_Field": 0.1,
             "Intersection": 1.0,
-            "Roundabout": 1.0,
+            "Roundabout": 0.1,
             "Bridge": 1,
         },
         #balance_category={
@@ -160,19 +164,19 @@ dataset = dict(
                 std = [58.395, 57.12, 57.375],
                 to_bgr=False),
         ],
-        #balance_category=False,
-        balance_category={
-        "Airplane": 0,
-        "Ship": 1,
-        "Vehicle": 0,
-        "Basketball_Court": 0,
-        "Tennis_Court": 0,
-        "Football_Field": 0,
-        "Baseball_Field": 0,
-        "Intersection": 0,
-        "Roundabout": 0,
-        "Bridge": 0,
-        },
+        balance_category=False,
+        #balance_category={
+        #"Airplane": 1,
+        #"Ship": 1,
+        #"Vehicle": 1,
+        #"Basketball_Court": 1,
+        #"Tennis_Court": 1,
+        #"Football_Field": 1,
+        #"Baseball_Field": 1,
+        #"Intersection": 1,
+        #"Roundabout": 1,
+        #"Bridge": 1,
+        #},
         batch_size=1,
         num_workers=1,
         shuffle=False
@@ -217,14 +221,14 @@ scheduler = dict(
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
     gamma=0.2,
-    milestones=[7, 10])
+    milestones=[7, 13])
 
 
 logger = dict(
     type="RunLogger")
 
 # when we the trained model from cshuan, image is rgb
-max_epoch = 9
+max_epoch = 12
 eval_interval = 1
 checkpoint_interval = 1
 log_interval = 50

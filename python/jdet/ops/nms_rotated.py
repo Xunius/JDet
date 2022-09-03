@@ -1,4 +1,11 @@
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from shapely.geometry import Polygon
 import jittor as jt 
+from jdet.models.boxes.box_ops import rotated_box_to_poly
+
 ML_NMS_ROTATED_HEADER1 = r'''
 // Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 #undef out
@@ -537,6 +544,112 @@ def nms_rotated(dets,scores,iou_threshold):
         keep =  nms_rotated_cpu(dets,order_t,iou_threshold,box_length=5)
     return jt.where(keep)[0]
 
+def nms_rotated2(dets,scores,iou_threshold):
+    if dets.numel()==0:
+        return jt.array([])
+    assert dets.numel()>0 and dets.ndim==2
+    assert dets.dtype==scores.dtype
+    order_t,_ = scores.argsort(0,descending=True)
+    order_t = np.array(order_t)
+    dets = dets[order_t]
+    #scores = scores[order_t]
+    keep = []
+    while True:
+        keep.append(order_t[0])
+        box1 = dets[0:1]
+        dets = dets[1:]
+        order_t = order_t[1:]
+
+        if len(dets) == 0:
+            break
+
+        kk = aligned_iou(box1, dets, iou_threshold)
+        dets = dets[kk]
+        order_t = order_t[kk]
+
+        if len(dets) == 0:
+            break
+
+    return jt.array(keep)
+
+
+def iou_poly(poly1,poly2):
+    poly1 = Polygon(poly1.reshape(4,2))
+    poly2 = Polygon(poly2.reshape(4,2))
+    inter = poly1.intersection(poly2)
+    inter_area = inter.area
+    if poly1.contains(poly2) or poly2.contains(poly1):
+        iou = 1.
+    else:
+        iou = inter_area/max(poly1.area+poly2.area-inter_area,0.01)
+    return iou, inter
+
+def aligned_iou(box1, box_others, iou_threshold):
+
+    keep = np.ones(len(box_others))
+    ratio1 = box1[0,3] / box1[0,2]
+    ratio1 = max(ratio1, 1/ratio1)
+    if ratio1 < 3:
+        #print('ratio1', ratio1, 'early quit')
+        return np.where(keep)[0]
+
+    angle1 = box1[0, -1]
+    poly1 = rotated_box_to_poly(box1)
+    ious = []
+    ious_r = []
+    #poly_others = []
+    #poly_others_r = []
+    for ii, boxii in enumerate(box_others):
+        boxii = boxii.unsqueeze(0)
+        poly2 = rotated_box_to_poly(boxii).reshape(4,2)
+        ratioii = boxii[0,3] / boxii[0,2]
+        ratioii = max(ratioii, 1/ratioii)
+        if ratioii < 3:
+            ious.append(0)
+            ious_r.append(0)
+            #poly_others.append(poly2)
+            #poly_others_r.append(poly2)
+            continue
+
+        iou, inter = iou_poly(poly1, poly2)
+        if iou == 0:
+            ious.append(iou)
+            ious_r.append(0)
+            #poly_others.append(poly2)
+            #poly_others_r.append(poly2)
+            continue
+
+        #print('ratioii', ratioii)
+        ious.append(iou)
+        #poly_others.append(poly2)
+
+        angle2 = boxii[0, -1]
+        dangle = angle2 - angle1
+        if iou > 0:
+            offset = jt.array([inter.centroid.x, inter.centroid.y])
+        else:
+            offset = boxii[0, :2]
+        rot = jt.concat([jt.cos(dangle), -jt.sin(dangle), jt.sin(dangle), jt.cos(dangle)]).reshape(2,2)
+        poly2 = poly2 - offset
+        poly2 = poly2 @ rot
+        poly2 = poly2 + offset
+
+        iou_r, inter = iou_poly(poly1, poly2)
+        ious_r.append(iou_r)
+        #poly_others_r.append(poly2)
+
+    ious = np.array(ious)
+    ious_r = np.array(ious_r)
+    keep[np.where((ious > 0) & (ious_r >= iou_threshold))] = 0
+    #keep = np.where((ious <= iou_threshold) | ((ious > 0) & (ious_r <= iou_threshold)))[0]
+    #keep = np.where((ious_r <= iou_threshold) & (ious > 0))[0]
+    keep = np.where(keep)[0]
+    #draw_boxes(poly1, poly_others, poly_others_r, ious, ious_r, keep)
+
+    return keep
+
+
+
 def multiclass_nms_rotated(multi_bboxes,
                            multi_scores,
                            score_thr,
@@ -578,12 +691,17 @@ def multiclass_nms_rotated(multi_bboxes,
     if bboxes.numel() == 0:
         return jt.zeros((0,6)), jt.zeros((0,)).int()
     nms_cfg_ = nms_cfg.copy()
-    nms_type = nms_cfg_.pop('type', 'nms')
+    #nms_type = nms_cfg_.pop('type', 'nms')
     iou_thr = nms_cfg_.pop('iou_thr', 0.1)
     keep = ml_nms_rotated(bboxes, scores, labels, iou_thr)
     bboxes = bboxes[keep]
     scores = scores[keep]
     labels = labels[keep]
+
+    keep2 = nms_rotated2(bboxes.detach(), scores.detach(), iou_thr)
+    bboxes = bboxes[keep2]
+    scores = scores[keep2]
+    labels = labels[keep2]
 
     inds,_ = scores.argsort(descending=True)
 
@@ -594,6 +712,104 @@ def multiclass_nms_rotated(multi_bboxes,
     labels = labels[inds]
 
     return jt.contrib.concat([bboxes, scores[:, None]], 1), labels
+
+def autoRename(abpath):
+    '''Auto rename a file to avoid overwriting an existing file
+
+    Args:
+        abpath (str): absolute path to a folder or a file to rename.
+
+    Returns:
+        newname (str): new file path.
+
+    If no conflict found, return <abpath>;
+    If conflict with existing file, return renamed file path,
+    by appending "_(n)".
+    E.g.
+        n1='~/codes/tools/send2ever.py'
+        n2='~/codes/tools/send2ever_(4).py'
+    will be renamed to
+        n1='~/codes/tools/send2ever_(1).py'
+        n2='~/codes/tools/send2ever_(5).py'
+    '''
+    import os
+    import re
+
+    def rename_sub(match):
+        base=match.group(1)
+        delim=match.group(2)
+        num=int(match.group(3))
+        return '%s%s(%d)' %(base,delim,num+1)
+
+    if not os.path.exists(abpath):
+        return abpath
+
+    folder,filename=os.path.split(abpath)
+    basename,ext=os.path.splitext(filename)
+    # match filename
+    rename_re=re.compile('''
+            ^(.+?)       # File name
+            ([- _])      # delimiter between file name and number
+            \\((\\d+)\\) # number in ()
+            (.*)         # ext
+            $''',\
+            re.X)
+
+    newname='%s_(1)%s' %(basename,ext)
+    while True:
+        newpath=os.path.join(folder,newname)
+
+        if not os.path.exists(newpath):
+            break
+        else:
+            if rename_re.match(newname):
+                newname=rename_re.sub(rename_sub,newname)
+                newname='%s%s' %(newname,ext)
+            else:
+                raise Exception("Exception")
+
+    newname=os.path.join(folder,newname)
+    return newname
+
+def draw_boxes(poly1, poly_others, poly_others_r, ious, ious_r, keep,
+        save_dir='/root/autodl-tmp/JDet/work_dirs/'):
+    import numpy as np
+    import os
+
+    fig, ax = plt.subplots(figsize=(10,10))
+    poly1 = poly1.reshape(4, 2)
+    poly1 = np.r_[poly1, poly1[0:1]]
+
+    for ii, (polyii, polyii2) in enumerate(zip(poly_others, poly_others_r)):
+        polyii = polyii.reshape(4,2)
+        polyii = np.r_[polyii, polyii[0:1]]
+        polyii2 = polyii2.reshape(4,2)
+        polyii2 = np.r_[polyii2, polyii2[0:1]]
+
+        if ii in keep:
+            lw=3; marker='o'; color='r'
+        else:
+            lw=1; marker=''; color='k'
+
+        # draw unrotated
+        ax.plot(polyii[:,0], polyii[:, 1], '-', color=color, lw=lw, marker=marker)
+        ax.text(polyii[0][0], polyii[0][1], '%.2f' %(ious[ii]), color='r',
+                ha='left', va='top', fontsize=7)
+
+        # draw rotated
+        ax.plot(polyii2[:,0], polyii2[:, 1], ls=':', color='m', lw=lw, marker=marker)
+        ax.text(polyii2[0][0], polyii2[0][1], '%.2f' %(ious_r[ii]), color='m',
+                ha='left', va='top', fontsize=7)
+
+    ax.plot(poly1[:,0], poly1[:, 1], 'b-', lw=2)
+
+    ax.set_aspect(1)
+    savepath = os.path.join(save_dir, 'align_iou.png')
+    savepath = autoRename(savepath)
+    print('Save figure to', savepath)
+    fig.savefig(savepath, dpi=100)
+    plt.close(fig)
+    return
 
 def singleclass_nms_rotated(multi_bboxes,
                            multi_scores,
@@ -638,11 +854,18 @@ def singleclass_nms_rotated(multi_bboxes,
     nms_cfg_ = nms_cfg.copy()
     nms_type = nms_cfg_.pop('type', 'nms')
     iou_thr = nms_cfg_.pop('iou_thr', 0.1)
+
+
     try:
         keep = nms_rotated(bboxes, scores, iou_thr)
         bboxes = bboxes[keep]
         scores = scores[keep]
         labels = labels[keep]
+        keep2 = nms_rotated2(bboxes.detach(), scores.detach(), iou_thr)
+
+        bboxes = bboxes[keep2]
+        scores = scores[keep2]
+        labels = labels[keep2]
 
         inds,_ = scores.argsort(descending=True)
     except:
