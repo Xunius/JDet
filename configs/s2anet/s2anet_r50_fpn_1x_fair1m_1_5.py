@@ -36,8 +36,7 @@ model = dict(
             type='FocalLoss',
             use_sigmoid=True,
             #gamma=2.0,
-            #gamma=1.5,
-            gamma=1.0,
+            gamma=1.5,
             alpha=0.25,
             loss_weight=1.0),
         loss_fam_bbox=dict(
@@ -46,8 +45,7 @@ model = dict(
             type='FocalLoss',
             use_sigmoid=True,
             #gamma=2.0,
-            #gamma=1.5,
-            gamma=1.0,
+            gamma=1.5,
             alpha=0.25,
             loss_weight=1.0),
         loss_odm_bbox=dict(
@@ -67,6 +65,7 @@ model = dict(
                     neg_iou_thr=0.4,
                     min_pos_iou=0,
                     ignore_iof_thr=-1,
+                    match_low_quality=True,
                     iou_calculator=dict(type='BboxOverlaps2D_rotated')),
                 bbox_coder=dict(type='DeltaXYWHABBoxCoder',
                                 target_means=(0., 0., 0., 0., 0.),
@@ -80,8 +79,9 @@ model = dict(
                     type='MaxIoUAssigner',
                     pos_iou_thr=0.5,
                     neg_iou_thr=0.4,
-                    min_pos_iou=0,
+                    min_pos_iou=0.1,
                     ignore_iof_thr=-1,
+                    match_low_quality=True,
                     iou_calculator=dict(type='BboxOverlaps2D_rotated')),
                 bbox_coder=dict(type='DeltaXYWHABBoxCoder',
                                 target_means=(0., 0., 0., 0., 0.),
@@ -102,11 +102,11 @@ dataset = dict(
                 min_size=1024,
                 max_size=1024
             ),
-            dict(type='RotatedRandomFlip', prob=0.5),
-            dict(
-            type="RandomRotateAug",
-            random_rotate_on=True,
-            ),
+            #dict(type='RotatedRandomFlip', prob=0.5),
+            #dict(
+            #type="RandomRotateAug",
+            #random_rotate_on=True,
+            #),
             dict(
                 type = "Pad",
                 size_divisor=32),
@@ -121,15 +121,15 @@ dataset = dict(
         num_workers=4,
         shuffle=True,
         balance_category={
-            "Airplane": 0.1,
+            "Airplane": 1.0,
             "Ship": 1,
             "Vehicle": 1,
-            "Basketball_Court": 0.5,
-            "Tennis_Court": 0.1,
-            "Football_Field": 0.2,
-            "Baseball_Field": 0.1,
-            "Intersection": 1.0,
-            "Roundabout": 0.1,
+            "Basketball_Court": 1,
+            "Tennis_Court": 0.8,
+            "Football_Field": 1,
+            "Baseball_Field": 0.8,
+            "Intersection": 1,
+            "Roundabout": 1,
             "Bridge": 1,
         },
         #balance_category={
@@ -228,7 +228,7 @@ logger = dict(
     type="RunLogger")
 
 # when we the trained model from cshuan, image is rgb
-max_epoch = 12
+max_epoch = 6
 eval_interval = 1
 checkpoint_interval = 1
 log_interval = 50

@@ -280,9 +280,9 @@ class Runner:
 
         if (not model_only):
             meta = resume_data.get("meta",dict())
-            self.epoch = meta.get("epoch",self.epoch)
-            self.iter = meta.get("iter",self.iter)
-            self.max_iter = meta.get("max_iter",self.max_iter)
+            #self.epoch = meta.get("epoch",self.epoch)
+            #self.iter = meta.get("iter",self.iter)
+            #self.max_iter = meta.get("max_iter",self.max_iter)
             #self.max_epoch = meta.get("max_epoch",self.max_epoch)
             self.scheduler.load_parameters(resume_data.get("scheduler",dict()))
             self.optimizer.load_parameters(resume_data.get("optimizer",dict()))
