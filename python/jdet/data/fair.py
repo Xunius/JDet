@@ -93,9 +93,9 @@ class FAIRDataset(DOTADataset):
 class FAIR1M_1_5_Dataset(DOTADataset):
     CLASSES = FAIR1M_1_5_CLASSES
     def __init__(self,**kwargs):
-        kwargs_copy = kwargs.copy()
-        kwargs_copy['balance_category'] = False
-        super().__init__(**kwargs_copy)
+        #kwargs_copy = kwargs.copy()
+        #kwargs_copy['balance_category'] = False
+        super().__init__(**kwargs)
         self.CLASSES = FAIR1M_1_5_CLASSES
 
         for img_info in self.img_infos:
@@ -108,11 +108,12 @@ class FAIR1M_1_5_Dataset(DOTADataset):
             img_info["ann"]["bboxes"] = img_info["ann"]["bboxes"][index]
             img_info["ann"]["labels"] = img_info["ann"]["labels"][index]
 
-        self.balance_dict = kwargs.get('balance_category', False)
-        if self.balance_dict:
-            self.img_infos = self._balance_categories()
-        self.total_len = len(self.img_infos)
+        #self.balance_dict = kwargs.get('balance_category', False)
+        ##if self.balance_dict:
+            #self.img_infos = self._balance_categories()
+        #self.total_len = len(self.img_infos)
 
+    """
     def _balance_categories(self):
         img_infos = self.img_infos
         cate_dict = {}
@@ -170,3 +171,4 @@ class FAIR1M_1_5_Dataset(DOTADataset):
 
         print('### After adjusting :', len(img_infos))
         return img_infos
+    """

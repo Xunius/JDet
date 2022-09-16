@@ -124,11 +124,11 @@ class DOTADataset(CustomDataset):
         aps = {}
         all_pr = {}
 
-        examine_class = 'None'
+        examine_class = 'none'
 
         #for i,classname in tqdm(enumerate(self.CLASSES),total=len(self.CLASSES)):
         for i,classname in enumerate(self.CLASSES):
-            #print('classname:', classname)
+            print('classname:', classname)
             #if classname != examine_class:
                 #continue
             c_dets = dets[dets[:,-1]==(i+1)][:,:-1] # [n_dets, 10]
@@ -146,6 +146,7 @@ class DOTADataset(CustomDataset):
                         'difficult':diffculty.copy(),}
 
             rec, prec, ap, tp_idx, fp_idx = voc_eval_dota(c_dets,classname_gts,iou_func=iou_poly)
+            #rec, prec, ap = voc_eval_dota(c_dets,classname_gts,iou_func=iou_poly)
 
             # get true positives
             if len(tp_idx) > 0 and classname == examine_class:
@@ -166,7 +167,8 @@ class DOTADataset(CustomDataset):
                         gt_imgs[kk] = gt_imgs[kk][gt_cls_idx]
                     tp_gts.append(gt_imgs)
 
-                visualize_results_with_gt(tp_det_imgs, tp_gts, self.CLASSES, save_dir)
+                nv = min(50, len(tp_img_idx))
+                visualize_results_with_gt(tp_det_imgs[:nv], tp_gts[:nv], self.CLASSES, save_dir)
                 with open(os.path.join(save_dir, 'tp_dets.dat'), 'wb') as fout:
                     pickle.dump(tp_dets, fout)
 
@@ -190,7 +192,8 @@ class DOTADataset(CustomDataset):
                         gt_imgs[kk] = gt_imgs[kk][gt_cls_idx]
                     fp_gts.append(gt_imgs)
 
-                visualize_results_with_gt(fp_det_imgs, fp_gts, self.CLASSES, save_dir)
+                nv = min(50, len(fp_img_idx))
+                visualize_results_with_gt(fp_det_imgs[:nv], fp_gts[:nv], self.CLASSES, save_dir)
                 with open(os.path.join(save_dir, 'fp_dets.dat'), 'wb') as fout:
                     pickle.dump(fp_dets, fout)
 

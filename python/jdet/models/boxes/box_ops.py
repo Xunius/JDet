@@ -173,9 +173,37 @@ def bbox_iou_per_box(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=Fal
     else:
         return iou  # IoU
 
-def norm_angle(angle, range=[float(-np.pi / 4), float(np.pi)]):
-    ret = (angle - range[0]) % range[1] + range[0]
+#def norm_angle(angle, range=[float(-np.pi / 4), float(np.pi/2)]):
+#def norm_angle(angle, range=[float(-np.pi / 4), float(np.pi)]):
+def norm_angle(angle, a0=float(-np.pi / 4), a1=float(np.pi)):
+    ret = (angle - a0) % a1 + a0
     return ret
+
+def norm_obboxes(obboxes):
+
+    '''
+    angle = obboxes[:, -1]
+    folds = angle // (np.pi/2)
+    width = obboxes[:, 2]
+    height = obboxes[:, 3]
+    idx = np.where((folds % 2 == 1) & (width > height), 1, 0)
+    if idx.sum() > 0:
+        obboxes[idx, 2] = height[idx]
+        obboxes[idx, 3] = width[idx]
+        obboxes[idx, -1] = norm_angle(angle[idx], a1=np.pi/2)
+    else:
+        obboxes[:, -1] = norm_angle(angle, a1=np.pi)
+    return obboxes
+    '''
+    angle = norm_angle(obboxes[:, -1], a1=np.pi)
+    width = obboxes[:, 2]
+    height = obboxes[:, 3]
+    idx = width > height
+    if idx.sum() > 0:
+        obboxes[idx, 2] = height[idx]
+        obboxes[idx, 3] = width[idx]
+        obboxes[idx, -1] = norm_angle(angle[idx] + np.pi/2, a1=np.pi)
+    return obboxes
 
 def bbox2delta_rotated(proposals, gt, means=(0., 0., 0., 0., 0.), stds=(1., 1., 1., 1., 1.)):
     """Compute deltas of proposals w.r.t. gt.
@@ -196,6 +224,9 @@ def bbox2delta_rotated(proposals, gt, means=(0., 0., 0., 0., 0.), stds=(1., 1., 
             dw, dh.
     """
     assert proposals.size() == gt.size()
+
+    #proposals = norm_obboxes(proposals)
+    #gt = norm_obboxes(gt)
 
     gt_widths = gt[..., 2]
     gt_heights = gt[..., 3]
@@ -226,6 +257,7 @@ def bbox2delta_rotated(proposals, gt, means=(0., 0., 0., 0., 0.), stds=(1., 1., 
     return deltas
 
 
+
 def delta2bbox_rotated(rois, deltas, means=(0., 0., 0., 0., 0.), stds=(1., 1., 1., 1., 1.), max_shape=None,
                        wh_ratio_clip=16 / 1000, clip_border=True):
     """Apply deltas to shift/scale base boxes.
@@ -253,6 +285,8 @@ def delta2bbox_rotated(rois, deltas, means=(0., 0., 0., 0., 0.), stds=(1., 1., 1
     References:
         .. [1] https://arxiv.org/abs/1311.2524
     """
+    #rois = norm_obboxes(rois)
+
     means = jt.array(means).repeat(1, deltas.size(1) // 5)
     stds = jt.array(stds).repeat(1, deltas.size(1) // 5)
     denorm_deltas = deltas * stds + means
@@ -266,24 +300,33 @@ def delta2bbox_rotated(rois, deltas, means=(0., 0., 0., 0., 0.), stds=(1., 1., 1
     max_ratio = np.abs(np.log(wh_ratio_clip))
     dw = dw.clamp(min_v=-max_ratio, max_v=max_ratio)
     dh = dh.clamp(min_v=-max_ratio, max_v=max_ratio)
+
     roi_x = (rois[:, 0]).unsqueeze(1).expand_as(dx)
     roi_y = (rois[:, 1]).unsqueeze(1).expand_as(dy)
     roi_w = (rois[:, 2]).unsqueeze(1).expand_as(dw)
     roi_h = (rois[:, 3]).unsqueeze(1).expand_as(dh)
     roi_angle = (rois[:, 4]).unsqueeze(1).expand_as(dangle)
+
     gx = dx * roi_w * jt.cos(roi_angle) \
          - dy * roi_h * jt.sin(roi_angle) + roi_x
     gy = dx * roi_w * jt.sin(roi_angle) \
          + dy * roi_h * jt.cos(roi_angle) + roi_y
     gw = roi_w * dw.exp()
     gh = roi_h * dh.exp()
+    '''
+
+    gx = roi_x + dx.tanh() * roi_w
+    gy = roi_y + dy.tanh() * roi_h
+    gw = roi_w * dw.exp()
+    gh = roi_h * dh.exp()
+    '''
 
     ga = np.pi * dangle + roi_angle
     ga = norm_angle(ga)
 
     bboxes = jt.stack([gx, gy, gw, gh, ga], dim=-1).view_as(deltas)
+    #bboxes = norm_obboxes(bboxes)
     return bboxes
-
 
 def bbox2delta(proposals,
                gt,
@@ -705,3 +748,38 @@ def distance2obb(points, distance, max_shape=None):
 
     obbs = jt.concat([ctr, wh, theta], dim=1)
     return regular_obb(obbs)
+
+def obb2poly(obboxes):
+    center, w, h, theta = jt.split(obboxes, [2, 1, 1, 1], dim=-1)
+    Cos, Sin = jt.cos(theta), jt.sin(theta)
+
+    vector1 = jt.concat([w/2 * Cos, -w/2 * Sin], dim=-1)
+    vector2 = jt.concat([-h/2 * Sin, -h/2 * Cos], dim=-1)
+
+    point1 = center + vector1 + vector2
+    point2 = center + vector1 - vector2
+    point3 = center - vector1 - vector2
+    point4 = center - vector1 + vector2
+    return jt.stack([point1, point2, point3, point4], dim=1)
+
+if __name__ == '__main__':
+
+    boxes = jt.array([[0, 0, 4, 2, 30/180*np.pi]])
+    print(boxes.shape)
+    aa = rotated_box_to_poly(boxes)
+    aa=aa.reshape(4,2)
+    aa = np.r_[aa, aa[0:1,:]]
+    aa=np.array(aa)
+    print(aa)
+
+    bb = obb2poly(boxes)[0]
+    bb=np.array(bb)
+
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    fig, ax=plt.subplots()
+    ax.plot(aa[:,0], aa[:,1], 'b-')
+    ax.plot(bb[:,0], bb[:,1], 'r-')
+    ax.set_aspect(1)
+    fig.savefig('testbox.png')

@@ -698,10 +698,12 @@ def multiclass_nms_rotated(multi_bboxes,
     scores = scores[keep]
     labels = labels[keep]
 
+    '''
     keep2 = nms_rotated2(bboxes.detach(), scores.detach(), iou_thr)
     bboxes = bboxes[keep2]
     scores = scores[keep2]
     labels = labels[keep2]
+    '''
 
     inds,_ = scores.argsort(descending=True)
 
@@ -855,21 +857,17 @@ def singleclass_nms_rotated(multi_bboxes,
     nms_type = nms_cfg_.pop('type', 'nms')
     iou_thr = nms_cfg_.pop('iou_thr', 0.1)
 
+    keep = nms_rotated(bboxes, scores, iou_thr)
+    bboxes = bboxes[keep]
+    scores = scores[keep]
+    labels = labels[keep]
 
-    try:
-        keep = nms_rotated(bboxes, scores, iou_thr)
-        bboxes = bboxes[keep]
-        scores = scores[keep]
-        labels = labels[keep]
-        keep2 = nms_rotated2(bboxes.detach(), scores.detach(), iou_thr)
+    #keep2 = nms_rotated2(bboxes.detach(), scores.detach(), iou_thr)
+    #bboxes = bboxes[keep2]
+    #scores = scores[keep2]
+    #labels = labels[keep2]
 
-        bboxes = bboxes[keep2]
-        scores = scores[keep2]
-        labels = labels[keep2]
-
-        inds,_ = scores.argsort(descending=True)
-    except:
-        __import__('pdb').set_trace()
+    inds,_ = scores.argsort(descending=True)
 
     if keep.size(0) > max_num:
         inds = inds[:max_num]

@@ -69,6 +69,25 @@ class Runner:
         self.val_dataset = build_from_cfg(cfg.dataset.val,DATASETS)
         self.test_dataset = build_from_cfg(cfg.dataset.test,DATASETS)
 
+        # train-val split
+        '''
+        n_total = len(self.train_dataset.img_infos)
+        n_train = int(n_total * 0.2)
+
+        self.train_dataset.img_infos = self.train_dataset.img_infos[:n_train]
+        self.val_dataset.img_infos = self.val_dataset.img_infos[n_train:]
+        self.train_dataset.total_len = len(self.train_dataset.img_infos)
+        self.val_dataset.total_len = len(self.val_dataset.img_infos)
+        '''
+
+        #####################
+        #self.val_dataset.img_infos = self.val_dataset.img_infos[:n_train]
+        #self.val_dataset.total_len = len(self.val_dataset.img_infos)
+        #####################
+
+        print('train size:', self.train_dataset.total_len)
+        print('val size:', self.val_dataset.total_len)
+
         self.logger = build_from_cfg(self.cfg.logger,HOOKS,work_dir=self.work_dir)
 
         save_file = build_file(self.work_dir,prefix="config.yaml")

@@ -61,6 +61,6 @@ class RunLogger:
                 if (k == "remain_time"):
                     msgs.append(f" {k}:{self.get_time(d)}")
                 else:
-                    msgs.append(f" {k}:{d:.7f}" if isinstance(d,float) else f" {k}:{d}")
+                    msgs.append(f" {k}:{d:.4f}" if isinstance(d,float) else f" {k}:{d}")
             msg = ",".join(msgs)
         print(current_time(),msg)

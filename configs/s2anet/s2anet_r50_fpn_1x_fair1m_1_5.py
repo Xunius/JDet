@@ -25,31 +25,33 @@ model = dict(
         stacked_convs=2,
         with_orconv=True,
         #anchor_ratios=[1.0],
-        anchor_ratios=[1.0, 3.0, 9.0],  # needs to put 1.0 at the 1st
+        anchor_ratios=[8.0],  # needs to put 1.0 at the 1st
         anchor_strides=[8, 16, 32, 64, 128],
         anchor_scales=[4],
         #anchor_scales=[2,4,6],
-        anchor_angles=[0, 45, 90, 135],  # needs to put 0 at the 1st
+        anchor_angles=[0],  # needs to put 0 at the 1st
         target_means=[.0, .0, .0, .0, .0],
         target_stds=[1.0, 1.0, 1.0, 1.0, 1.0],
         loss_fam_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
-            #gamma=2.0,
-            gamma=1.5,
+            gamma=2.0,
+            #gamma=1.5,
             alpha=0.25,
             loss_weight=1.0),
         loss_fam_bbox=dict(
             type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
+        #type='PolyCIoULoss', iou_thr=0.2, loss_weight=1.0),
         loss_odm_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
-            #gamma=2.0,
-            gamma=1.5,
+            gamma=2.0,
+            #gamma=1.5,
             alpha=0.25,
             loss_weight=1.0),
         loss_odm_bbox=dict(
             type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
+            #type='PolyCIoULoss', iou_thr=0.2, loss_weight=1.0),
         test_cfg=dict(
             nms_pre=2000,
             min_bbox_size=0,
@@ -61,33 +63,37 @@ model = dict(
             fam_cfg=dict(
                 assigner=dict(
                     type='MaxIoUAssigner',
-                    pos_iou_thr=0.5,
+                    pos_iou_thr=0.8,
                     neg_iou_thr=0.4,
                     min_pos_iou=0,
                     ignore_iof_thr=-1,
                     match_low_quality=True,
+                    gt_max_assign_all=False,
                     iou_calculator=dict(type='BboxOverlaps2D_rotated')),
                 bbox_coder=dict(type='DeltaXYWHABBoxCoder',
                                 target_means=(0., 0., 0., 0., 0.),
                                 target_stds=(1., 1., 1., 1., 1.),
                                 clip_border=True),
+                reg_decoded_bbox=False,
                 allowed_border=-1,
                 pos_weight=-1,
                 debug=False),
             odm_cfg=dict(
                 assigner=dict(
                     type='MaxIoUAssigner',
-                    pos_iou_thr=0.5,
+                    pos_iou_thr=0.8,
                     neg_iou_thr=0.4,
-                    min_pos_iou=0.1,
+                    min_pos_iou=0.,
                     ignore_iof_thr=-1,
                     match_low_quality=True,
+                    gt_max_assign_all=False,
                     iou_calculator=dict(type='BboxOverlaps2D_rotated')),
                 bbox_coder=dict(type='DeltaXYWHABBoxCoder',
                                 target_means=(0., 0., 0., 0., 0.),
                                 target_stds=(1., 1., 1., 1., 1.),
                                 clip_border=True),
                 allowed_border=-1,
+                reg_decoded_bbox=False,
                 pos_weight=-1,
                 debug=False))
         )
@@ -102,7 +108,7 @@ dataset = dict(
                 min_size=1024,
                 max_size=1024
             ),
-            #dict(type='RotatedRandomFlip', prob=0.5),
+            dict(type='RotatedRandomFlip', prob=0.5),
             #dict(
             #type="RandomRotateAug",
             #random_rotate_on=True,
@@ -117,21 +123,21 @@ dataset = dict(
                 to_bgr=False,)
 
         ],
-        batch_size=4,
+        batch_size=2,
         num_workers=4,
         shuffle=True,
-        balance_category={
-            "Airplane": 1.0,
-            "Ship": 1,
-            "Vehicle": 1,
-            "Basketball_Court": 1,
-            "Tennis_Court": 0.8,
-            "Football_Field": 1,
-            "Baseball_Field": 0.8,
-            "Intersection": 1,
-            "Roundabout": 1,
-            "Bridge": 1,
-        },
+        #balance_category={
+        #"Airplane": 1.0,
+        #"Ship": 1,
+        #"Vehicle": 1,
+        #"Basketball_Court": 1,
+        #"Tennis_Court": 0.8,
+        #"Football_Field": 1,
+        #"Baseball_Field": 0.8,
+        #"Intersection": 1,
+        #"Roundabout": 1,
+        #"Bridge": 1,
+        #},
         #balance_category={
             #"Airplane": 0.1,
             #"Ship": 1,
@@ -166,19 +172,19 @@ dataset = dict(
         ],
         balance_category=False,
         #balance_category={
-        #"Airplane": 1,
-        #"Ship": 1,
-        #"Vehicle": 1,
-        #"Basketball_Court": 1,
-        #"Tennis_Court": 1,
-        #"Football_Field": 1,
-        #"Baseball_Field": 1,
-        #"Intersection": 1,
-        #"Roundabout": 1,
-        #"Bridge": 1,
+        #"Airplane": 0.3,
+        #"Ship": 0.3,
+        #"Vehicle": 0.3,
+        #"Basketball_Court": 0.3,
+        #"Tennis_Court": 0.3,
+        #"Football_Field": 0.3,
+        #"Baseball_Field": 0.3,
+        #"Intersection": 0.3,
+        #"Roundabout": 0.3,
+        #"Bridge": 0.3,
         #},
-        batch_size=1,
-        num_workers=1,
+        batch_size=4,
+        num_workers=8,
         shuffle=False
     ),
     test=dict(
@@ -208,11 +214,11 @@ dataset = dict(
 optimizer = dict(
     type='SGD',
     #lr=0.01/4., #0.0,#0.01*(1/8.),
-    lr=0.01/5., #0.0,#0.01*(1/8.),
+    lr=0.01/8., #0.0,#0.01*(1/8.),
     momentum=0.95,
     weight_decay=0.0001,
     grad_clip=dict(
-        max_norm=35,
+        max_norm=30,
         norm_type=2))
 
 scheduler = dict(
@@ -229,6 +235,6 @@ logger = dict(
 
 # when we the trained model from cshuan, image is rgb
 max_epoch = 6
-eval_interval = 1
+eval_interval = 6
 checkpoint_interval = 1
 log_interval = 50
