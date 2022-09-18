@@ -24,6 +24,7 @@ def anchor_target(anchor_list,
                   target_means,
                   target_stds,
                   cfg,
+                  known_assigns,
                   gt_bboxes_ignore_list=None,
                   gt_labels_list=None,
                   label_channels=1,
@@ -59,15 +60,17 @@ def anchor_target(anchor_list,
         gt_bboxes_ignore_list = [None for _ in range(num_imgs)]
     if gt_labels_list is None:
         gt_labels_list = [None for _ in range(num_imgs)]
+
     (all_labels, all_label_weights, all_bbox_targets, all_bbox_weights,
-     pos_inds_list, neg_inds_list) = multi_apply(
-        anchor_target_single,
+     pos_inds_list, neg_inds_list, assign_results) = multi_apply(
+        anchor_target_single3,
         anchor_list,
         valid_flag_list,
         gt_bboxes_list,
         gt_bboxes_ignore_list,
         gt_labels_list,
         img_metas,
+        known_assigns,
         target_means=target_means,
         target_stds=target_stds,
         cfg=cfg,
@@ -86,7 +89,7 @@ def anchor_target(anchor_list,
     bbox_targets_list = images_to_levels(all_bbox_targets, num_level_anchors)
     bbox_weights_list = images_to_levels(all_bbox_weights, num_level_anchors)
     return (labels_list, label_weights_list, bbox_targets_list,
-            bbox_weights_list, num_total_pos, num_total_neg)
+            bbox_weights_list, num_total_pos, num_total_neg, assign_results)
 
 
 def images_to_levels(target, num_level_anchors):
@@ -318,7 +321,7 @@ def anchor_target_single2(flat_anchors,
                          img_meta,
                          target_means,
                          target_stds,
-                         known_sampling,
+                         known_assign,
                          cfg=None,
                          label_channels=1,
                          sampling=True,
@@ -339,7 +342,7 @@ def anchor_target_single2(flat_anchors,
     # assign gt and sample anchors
     anchors = flat_anchors[inside_flags, :]
 
-    if known_sampling is None:
+    if known_assign is None:
 
         if sampling:
             assign_result, sampling_result = assign_and_sample(
@@ -352,7 +355,9 @@ def anchor_target_single2(flat_anchors,
             sampling_result = bbox_sampler.sample(assign_result, anchors,
                                                   gt_bboxes)
     else:
-        sampling_result = known_sampling
+        bbox_sampler = PseudoSampler()
+        sampling_result = bbox_sampler.sample(known_assign, anchors,
+                                              gt_bboxes)
 
     num_valid_anchors = anchors.shape[0]
     bbox_targets = jt.zeros_like(anchors)
@@ -392,6 +397,91 @@ def anchor_target_single2(flat_anchors,
 
     return (labels, label_weights, bbox_targets, bbox_weights, pos_inds,
             neg_inds, sampling_result)
+
+def anchor_target_single3(flat_anchors,
+                         valid_flags,
+                         gt_bboxes,
+                         gt_bboxes_ignore,
+                         gt_labels,
+                         img_meta,
+                         known_assign,
+                         target_means,
+                         target_stds,
+                         cfg=None,
+                         label_channels=1,
+                         sampling=True,
+                         unmap_outputs=True):
+    bbox_coder_cfg = cfg.get('bbox_coder', '')
+    if bbox_coder_cfg == '':
+        bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
+    bbox_coder = build_from_cfg(bbox_coder_cfg, BOXES)
+    # Set True to use IoULoss
+    reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)  # False
+
+    inside_flags = anchor_inside_flags(flat_anchors, valid_flags,
+                                       img_meta['img_shape'][:2],
+                                       cfg.get('allowed_border', -1))
+    if not inside_flags.any(0):
+        return (None,) * 6
+    # assign gt and sample anchors
+    anchors = flat_anchors[inside_flags, :]
+
+    if known_assign is None:
+
+        if sampling:
+            assign_result, sampling_result = assign_and_sample(
+                anchors, gt_bboxes, gt_bboxes_ignore, None, cfg)
+        else:
+            bbox_assigner = build_from_cfg(cfg.get('assigner', ''), BOXES)
+            assign_result = bbox_assigner.assign(anchors, gt_bboxes,
+                                                 gt_bboxes_ignore, gt_labels)
+            bbox_sampler = PseudoSampler()
+            sampling_result = bbox_sampler.sample(assign_result, anchors,
+                                                  gt_bboxes)
+    else:
+        bbox_sampler = PseudoSampler()
+        sampling_result = bbox_sampler.sample(known_assign, anchors,
+                                              gt_bboxes)
+        assign_result = None
+
+    num_valid_anchors = anchors.shape[0]
+    bbox_targets = jt.zeros_like(anchors)
+    bbox_weights = jt.zeros_like(anchors)
+    labels = jt.zeros(num_valid_anchors).int()
+    label_weights = jt.zeros(num_valid_anchors).float()
+    # num_classes = 80
+    # labels = jt.full((num_valid_anchors,), num_classes)
+    pos_inds = sampling_result.pos_inds
+    neg_inds = sampling_result.neg_inds
+    if len(pos_inds) > 0:
+        if not reg_decoded_bbox:
+            pos_bbox_targets = bbox_coder.encode(sampling_result.pos_bboxes,
+                                                sampling_result.pos_gt_bboxes)
+        else:
+            pos_bbox_targets = sampling_result.pos_gt_bboxes
+        bbox_targets[pos_inds, :] = pos_bbox_targets.cast(bbox_targets.dtype)
+        bbox_weights[pos_inds, :] = 1.0
+        if gt_labels is None:
+            labels[pos_inds] = 1
+        else:
+            labels[pos_inds] = gt_labels[sampling_result.pos_assigned_gt_inds]
+        if cfg.pos_weight <= 0:
+            label_weights[pos_inds] = 1.0
+        else:
+            label_weights[pos_inds] = cfg.get('pos_weight', -1)
+    if len(neg_inds) > 0:
+        label_weights[neg_inds] = 1.0
+
+    # map up to original set of anchors
+    if unmap_outputs:
+        num_total_anchors = flat_anchors.size(0)
+        labels = unmap(labels, num_total_anchors, inside_flags)
+        label_weights = unmap(label_weights, num_total_anchors, inside_flags)
+        bbox_targets = unmap(bbox_targets, num_total_anchors, inside_flags)
+        bbox_weights = unmap(bbox_weights, num_total_anchors, inside_flags)
+
+    return (labels, label_weights, bbox_targets, bbox_weights, pos_inds,
+            neg_inds, assign_result)
 
 # TODO for rotated box
 def anchor_inside_flags(flat_anchors, valid_flags, img_shape,

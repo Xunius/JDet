@@ -307,6 +307,59 @@ class Runner:
             self.optimizer.load_parameters(resume_data.get("optimizer",dict()))
         if ("model" in resume_data):
             self.model.load_parameters(resume_data["model"])
+
+            # load mutiple times for each anchor
+            head = self.model.bbox_head
+            params = resume_data['model']
+            n_anchors = head.n_anchors
+            n_stack = head.stacked_convs
+            for ii in range(n_anchors):
+
+                # align_conv_list <- 'bbox_head.align_conv.deform_conv.weight'
+                head.align_conv_list[ii].deform_conv.weight.update(params['bbox_head.align_conv.deform_conv.weight'])
+                print('loaded align conv weight for anchor', ii)
+
+                # or_conv_list <- 'bbox_head.or_conv.weight'
+                # 'bbox_head.or_conv.bias', 'bbox_head.or_conv.indices'
+                head.or_conv_list[ii].weight.update(params['bbox_head.or_conv.weight'])
+                print('loaded or conv weight for anchor', ii)
+                head.or_conv_list[ii].bias.update(params['bbox_head.or_conv.bias'])
+                print('loaded or conv bias for anchor', ii)
+                head.or_conv_list[ii].indices.update(params['bbox_head.or_conv.indices'])
+                print('loaded or conv indices for anchor', ii)
+
+                # odm_cls_convs_list[jj] <- 'bbox_head.odm_cls_convs.jj.conv.weight, .bias
+                for jj in range(n_stack):
+                    head.odm_cls_convs_list[ii][jj].conv.weight.update(
+                            params['bbox_head.odm_cls_convs.%d.conv.weight' %jj])
+                    print('loaded or odm cls conv weight for anchor', ii, 'stack', jj)
+                    head.odm_cls_convs_list[ii][jj].conv.bias.update(
+                            params['bbox_head.odm_cls_convs.%d.conv.bias' %jj])
+                    print('loaded or odm cls conv bias for anchor', ii, 'stack', jj)
+
+                # odm_reg_convs_list[jj] <- 'bbox_head.odm_reg_convs.jj.conv.weight, .bias
+                for jj in range(n_stack):
+                    head.odm_reg_convs_list[ii][jj].conv.weight.update(
+                            params['bbox_head.odm_reg_convs.%d.conv.weight' %jj])
+                    print('loaded or odm reg conv weight for anchor', ii, 'stack', jj)
+                    head.odm_reg_convs_list[ii][jj].conv.bias.update(
+                            params['bbox_head.odm_reg_convs.%d.conv.bias' %jj])
+                    print('loaded or odm reg conv bias for anchor', ii, 'stack', jj)
+
+                # odm_reg_list[ii] <- 'bbox_head.odm_reg.weight, .bias
+                #head.odm_reg_list[ii].weight.update(params['bbox_head.odm_reg.weight'])
+                #print('loaded odm reg weight for anchor', ii)
+                #head.odm_reg_list[ii].bias.update(params['bbox_head.odm_reg.bias'])
+                #print('loaded odm reg bias for anchor', ii)
+
+                # odm_cls_list[ii] <- 'bbox_head.odm_cls.weight, .bias
+                #head.odm_cls_list[ii].weight.update(params['bbox_head.odm_cls.weight'])
+                #print('loaded odm cls weight for anchor', ii)
+                #head.odm_cls_list[ii].bias.update(params['bbox_head.odm_cls.bias'])
+                #print('loaded odm cls bias for anchor', ii)
+
+
+
         elif ("state_dict" in resume_data):
             self.model.load_parameters(resume_data["state_dict"])
         else:

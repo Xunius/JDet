@@ -12,7 +12,7 @@ from jdet.utils.registry import HEADS,LOSSES,BOXES,build_from_cfg
 from jdet.ops.dcn_v1 import DeformConv
 from jdet.ops.orn import ORConv2d, RotationInvariantPooling
 from jdet.ops.nms_rotated import multiclass_nms_rotated
-from jdet.ops.nms_rotated import singleclass_nms_rotated
+#from jdet.ops.nms_rotated import singleclass_nms_rotated
 from jdet.models.boxes.box_ops import delta2bbox_rotated, rotated_box_to_poly, norm_obboxes
 from jdet.models.boxes.anchor_target import images_to_levels,anchor_target
 from jdet.models.boxes.anchor_generator import AnchorGeneratorRotatedS2ANet
@@ -153,68 +153,56 @@ class S2ANetHead(nn.Module):
         self.fam_reg = nn.Conv2d(self.feat_channels, 5*self.n_anchors, 1)
         self.fam_cls = nn.Conv2d(self.feat_channels, self.cls_out_channels*self.n_anchors, 1)
 
-        self.align_conv_list = nn.ModuleList()
-        self.or_conv_list = nn.ModuleList()
+        self.align_conv = AlignConv(
+            self.feat_channels, self.feat_channels, kernel_size=3)
+
+        if self.with_orconv:
+            self.or_conv = ORConv2d(self.feat_channels, int(
+                self.feat_channels / 8), kernel_size=3, padding=1, arf_config=(1, 8))
+        else:
+            self.or_conv = nn.Conv2d(
+                self.feat_channels, self.feat_channels, 3, padding=1)
+        #self.or_pool = RotationInvariantPooling(256, 8)
         self.or_pool = RotationInvariantPooling(self.feat_channels, 8)  # replace 256 with self.feat_channels
-        self.odm_cls_convs_list = nn.ModuleList()
-        self.odm_reg_convs_list = nn.ModuleList()
 
-        for ii in range(self.n_anchors):
-
-            align_convii = AlignConv(self.feat_channels, self.feat_channels, kernel_size=3)
-            self.align_conv_list.append(align_convii)
-
-            if self.with_orconv:
-                or_convii = ORConv2d(self.feat_channels, int(
-                    self.feat_channels / 8), kernel_size=3, padding=1, arf_config=(1, 8))
-            else:
-                or_convii = nn.Conv2d(
-                    self.feat_channels, self.feat_channels, 3, padding=1)
-
-            self.or_conv_list.append(or_convii)
-
-            odm_reg_convs = nn.ModuleList()
-            odm_cls_convs = nn.ModuleList()
-
-            for i in range(self.stacked_convs):
-
-                odm_reg_convs.append(
-                    ConvModule(
-                        self.feat_channels,
-                        self.feat_channels,
-                        3,
-                        stride=1,
-                        padding=1))
-
-                if i == 0:
-                    if self.with_orconv:
-                        chn = int(self.feat_channels/8)
-                    else:
-                        chn = self.feat_channels
+        self.odm_reg_convs = nn.ModuleList()
+        self.odm_cls_convs = nn.ModuleList()
+        for i in range(self.stacked_convs):
+            if i == 0:
+                if self.with_orconv:
+                    chn = self.n_anchors*self.feat_channels
                 else:
-                    chn = self.feat_channels
+                    chn = self.feat_channels*self.n_anchors
+            else:
+                chn = self.feat_channels
 
-                odm_cls_convs.append(
-                    ConvModule(
-                        chn,
-                        self.feat_channels,
-                        3,
-                        stride=1,
-                        padding=1))
+            self.odm_reg_convs.append(
+                ConvModule(
+                    chn,
+                    self.feat_channels,
+                    3,
+                    stride=1,
+                    padding=1))
 
-            self.odm_reg_convs_list.append(odm_reg_convs)
-            self.odm_cls_convs_list.append(odm_cls_convs)
+            if i == 0:
+                if self.with_orconv:
+                    chn = self.n_anchors*int(self.feat_channels/8)
+                else:
+                    chn = self.feat_channels*self.n_anchors
+            else:
+                chn = self.feat_channels
 
-        self.odm_cls_list = nn.ModuleList()
-        self.odm_reg_list = nn.ModuleList()
+            self.odm_cls_convs.append(
+                ConvModule(
+                    chn,
+                    self.feat_channels,
+                    3,
+                    stride=1,
+                    padding=1))
 
-        for ii in range(self.n_anchors):
-
-            odm_clsii = nn.Conv2d(self.feat_channels, self.cls_out_channels, 3, padding=1)
-            odm_regii = nn.Conv2d(self.feat_channels, 5, 3, padding=1)
-
-            self.odm_cls_list.append(odm_clsii)
-            self.odm_reg_list.append(odm_regii)
+        self.odm_cls = nn.Conv2d(
+            self.feat_channels, self.n_anchors*self.cls_out_channels, 3, padding=1)
+        self.odm_reg = nn.Conv2d(self.feat_channels, 5*self.n_anchors, 3, padding=1)
 
         self.init_weights()
 
@@ -227,30 +215,15 @@ class S2ANetHead(nn.Module):
         normal_init(self.fam_reg, std=0.01)
         normal_init(self.fam_cls, std=0.01, bias=bias_cls)
 
-        for m in self.align_conv_list:
-            m.init_weights()
-        for m in self.or_conv_list:
-            normal_init(m, std=0.01)
+        self.align_conv.init_weights()
 
-        #self.align_conv.init_weights()
-        #normal_init(self.or_conv, std=0.01)
-
-        for convs in self.odm_reg_convs_list:
-            for m in convs:
-                normal_init(m.conv, std=0.01)
-        for convs in self.odm_cls_convs_list:
-            for m in convs:
-                normal_init(m.conv, std=0.01)
-
-        #for m in self.odm_cls_convs:
-            #normal_init(m.conv, std=0.01)
-
-        for m in self.odm_cls_list:
-            normal_init(m, std=0.01, bias=bias_cls)
-        for m in self.odm_reg_list:
-            normal_init(m, std=0.01)
-        #normal_init(self.odm_cls, std=0.01, bias=bias_cls)
-        #normal_init(self.odm_reg, std=0.01)
+        normal_init(self.or_conv, std=0.01)
+        for m in self.odm_reg_convs:
+            normal_init(m.conv, std=0.01)
+        for m in self.odm_cls_convs:
+            normal_init(m.conv, std=0.01)
+        normal_init(self.odm_cls, std=0.01, bias=bias_cls)
+        normal_init(self.odm_reg, std=0.01)
 
 
 
@@ -284,8 +257,8 @@ class S2ANetHead(nn.Module):
 
         # refine anchors using fam
         refine_anchor = []
-        all_odm_cls = []
-        all_odm_reg = []
+        all_odm_cls_feat = []
+        all_odm_reg_feat = []
 
         for ii in range(self.n_anchors):
 
@@ -303,34 +276,31 @@ class S2ANetHead(nn.Module):
                     self.target_stds,
                     neg_indices = None) # [B, 128, 128, 5]
 
-            #align_feat = self.align_conv(x, refine_anchorii.clone(), stride) # [B, 256, 128, 128]
-            align_feat = self.align_conv_list[ii](x, refine_anchorii.clone(), stride) # [B, 256, 128, 128]
+            align_feat = self.align_conv(x, refine_anchorii.clone(), stride) # [B, 256, 128, 128]
 
-            #or_feat = self.or_conv(align_feat) # [2, 256, 128, 128]
-            or_feat = self.or_conv_list[ii](align_feat) # [2, 256, 128, 128]
+            or_feat = self.or_conv(align_feat) # [2, 256, 128, 128]
             odm_reg_feat = or_feat
-
             if self.with_orconv:
                 odm_cls_feat = self.or_pool(or_feat)
             else:
                 odm_cls_feat = or_feat
 
-            for odm_reg_conv in self.odm_reg_convs_list[ii]:
-                odm_reg_feat = odm_reg_conv(odm_reg_feat)
-            for odm_cls_conv in self.odm_cls_convs_list[ii]:
-                odm_cls_feat = odm_cls_conv(odm_cls_feat)
-
-            odm_cls_score = self.odm_cls_list[ii](odm_cls_feat)  # [B, n_anchors*10, 128, 128]
-            odm_bbox_pred = self.odm_reg_list[ii](odm_reg_feat)  # [B, n_anchors*5, 128, 128]
-
             refine_anchor.append(refine_anchorii)
-            all_odm_cls.append(odm_cls_score)
-            all_odm_reg.append(odm_bbox_pred)
+            all_odm_cls_feat.append(odm_cls_feat)
+            all_odm_reg_feat.append(odm_reg_feat)
 
         refine_anchor = jt.stack(refine_anchor, 3) # [B, 128, 128, n_anchors, 5]
         refine_anchor = refine_anchor.reshape(B, -1, 5)
-        odm_cls_score = jt.concat(all_odm_cls, 1) # [B, n_anchors*32, 128, 128]
-        odm_bbox_pred = jt.concat(all_odm_reg, 1) # [B, n_anchors*256, 128, 128]
+        odm_cls_feat = jt.concat(all_odm_cls_feat, 1) # [B, n_anchors*32, 128, 128]
+        odm_reg_feat = jt.concat(all_odm_reg_feat, 1) # [B, n_anchors*256, 128, 128]
+
+
+        for odm_reg_conv in self.odm_reg_convs:
+            odm_reg_feat = odm_reg_conv(odm_reg_feat)
+        for odm_cls_conv in self.odm_cls_convs:
+            odm_cls_feat = odm_cls_conv(odm_cls_feat)
+        odm_cls_score = self.odm_cls(odm_cls_feat)  # [B, n_anchors*10, 128, 128]
+        odm_bbox_pred = self.odm_reg(odm_reg_feat)  # [B, n_anchors*5, 128, 128]
 
         fam_bbox_pred = fam_bbox_pred.permute(0, 2, 3, 1).reshape(B, self.n_anchors * 5, *featmap_size)
 
@@ -394,6 +364,50 @@ class S2ANetHead(nn.Module):
         return anchor_list, valid_flag_list
 
 
+    def get_init_anchors2(self,
+                         stride_idx,
+                         featmap_size,
+                         img_metas):
+        """Get anchors according to feature map sizes.
+
+        Args:
+            stride_idx (int): index of stride level.
+            featmap_size (tuple): feature map size of a level.
+            img_metas (list[dict]): Image meta info.
+
+        Returns:
+            tuple: anchors of each image, valid flags of each image
+        """
+        num_imgs = len(img_metas)
+        #num_levels = len(featmap_sizes)
+        #num_levels = 1
+
+        # since feature map sizes of all images are the same, we only compute
+        # anchors for one time
+        anchor_list = []
+        for j in range(num_imgs):
+            #multi_level_anchors = []
+            #for i in range(num_levels):
+            anchors = self.anchor_generators[stride_idx].grid_anchors(
+                    featmap_size, self.anchor_strides[stride_idx])
+            #multi_level_anchors.append(anchors)
+            anchor_list.append(anchors)
+        #anchor_list = [multi_level_anchors for _ in range(num_imgs)]
+
+        # for each image, we compute valid flags of multi level anchors
+        valid_flag_list = []
+        for img_id, img_meta in enumerate(img_metas):
+            #multi_level_flags = []
+            #for i in range(num_levels):
+            anchor_stride = self.anchor_strides[stride_idx]
+            feat_h, feat_w = featmap_size
+            w,h = img_meta['pad_shape'][:2]
+            valid_feat_h = min(int(np.ceil(h / anchor_stride)), feat_h)
+            valid_feat_w = min(int(np.ceil(w / anchor_stride)), feat_w)
+            flags = self.anchor_generators[stride_idx].valid_flags((feat_h, feat_w), (valid_feat_h, valid_feat_w))
+            #multi_level_flags.append(flags)
+            valid_flag_list.append(flags)
+        return anchor_list, valid_flag_list
 
     def get_refine_anchors(self,
                            featmap_sizes,
@@ -422,6 +436,7 @@ class S2ANetHead(nn.Module):
                     valid_feat_h = min(int(np.ceil(h / anchor_stride)), feat_h)
                     valid_feat_w = min(int(np.ceil(w / anchor_stride)), feat_w)
                     flags = self.anchor_generators[i].valid_flags((feat_h, feat_w), (valid_feat_h, valid_feat_w))
+                    flags = flags[::self.n_anchors]
                     multi_level_flags.append(flags)
                 valid_flag_list.append(multi_level_flags)
         return refine_anchors_list, valid_flag_list
@@ -454,10 +469,6 @@ class S2ANetHead(nn.Module):
         all_anchor_list = images_to_levels(concat_anchor_list,num_level_anchors) # 5-list, each [B, Nanchors, 5]
 
         # Feature Alignment Module
-        if cfg.fam_cfg['assigner']['type'] == 'MinCenterDiffAssigner':
-            cfg.fam_cfg['assigner']['n_ratios'] = len(self.anchor_ratios)
-            cfg.fam_cfg['assigner']['n_angles'] = len(self.anchor_angles)
-            cfg.fam_cfg['assigner']['n_scales'] = len(self.anchor_scales)
         label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
         cls_reg_targets = anchor_target(
             anchor_list,
@@ -467,16 +478,13 @@ class S2ANetHead(nn.Module):
             self.target_means,
             self.target_stds,
             cfg.fam_cfg,
-            [None,]*len(img_metas),
             gt_bboxes_ignore_list=gt_bboxes_ignore,
             gt_labels_list=gt_labels,
             label_channels=label_channels,
             sampling=self.sampling)
         if cls_reg_targets is None:
             return None
-
-        labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,\
-                num_total_pos, num_total_neg, assign_results = cls_reg_targets
+        labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,num_total_pos, num_total_neg = cls_reg_targets
 
         num_total_samples = num_total_pos + num_total_neg if self.sampling else num_total_pos
 
@@ -507,10 +515,6 @@ class S2ANetHead(nn.Module):
                                            num_level_anchors)
 
         label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
-        if cfg.odm_cfg['assigner']['type'] == 'MinCenterDiffAssigner':
-            cfg.odm_cfg['assigner']['n_ratios'] = len(self.anchor_ratios)
-            cfg.odm_cfg['assigner']['n_angles'] = len(self.anchor_angles)
-            cfg.odm_cfg['assigner']['n_scales'] = len(self.anchor_scales)
         cls_reg_targets = anchor_target(
             refine_anchors_list,
             valid_flag_list,
@@ -519,18 +523,14 @@ class S2ANetHead(nn.Module):
             self.target_means,
             self.target_stds,
             cfg.odm_cfg,
-            #assign_results,
-            [None,]*len(img_metas),
             gt_bboxes_ignore_list=gt_bboxes_ignore,
             gt_labels_list=gt_labels,
             label_channels=label_channels,
             sampling=self.sampling)
         if cls_reg_targets is None:
             return None
-
         (labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,
-                num_total_pos, num_total_neg, assign_results) = cls_reg_targets
-
+         num_total_pos, num_total_neg) = cls_reg_targets
         num_total_samples = (
             num_total_pos + num_total_neg if self.sampling else num_total_pos)
 
@@ -780,11 +780,11 @@ class S2ANetHead(nn.Module):
             padding = jt.zeros((mlvl_scores.shape[0], 1),dtype=mlvl_scores.dtype)
             mlvl_scores = jt.contrib.concat([padding, mlvl_scores], dim=1)
 
-        #det_bboxes, det_labels = multiclass_nms_rotated(mlvl_bboxes, mlvl_scores, cfg.score_thr, cfg.nms, cfg.max_per_img)
+        det_bboxes, det_labels = multiclass_nms_rotated(mlvl_bboxes, mlvl_scores, cfg.score_thr, cfg.nms, cfg.max_per_img)
         #score_factors = jt.array([0.9, 1.1, 1.1, 1, 0.9, 1, 0.9, 1.1, 0.9, 1.1])
-        score_factors = None
-        det_bboxes, det_labels = singleclass_nms_rotated(mlvl_bboxes, mlvl_scores,
-                cfg.score_thr, cfg.nms, cfg.max_per_img, score_factors=score_factors)
+        #score_factors = None
+        #det_bboxes, det_labels = singleclass_nms_rotated(mlvl_bboxes, mlvl_scores,
+                #cfg.score_thr, cfg.nms, cfg.max_per_img, score_factors=score_factors)
 
         boxes = det_bboxes[:, :5]
         scores = det_bboxes[:, 5]

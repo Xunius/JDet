@@ -124,7 +124,7 @@ class DOTADataset(CustomDataset):
         aps = {}
         all_pr = {}
 
-        examine_class = 'none'
+        examine_class = 'Ship'
 
         #for i,classname in tqdm(enumerate(self.CLASSES),total=len(self.CLASSES)):
         for i,classname in enumerate(self.CLASSES):

@@ -25,7 +25,7 @@ model = dict(
         stacked_convs=2,
         with_orconv=True,
         #anchor_ratios=[1.0],
-        anchor_ratios=[8.0],  # needs to put 1.0 at the 1st
+        anchor_ratios=[3.0,],  # needs to put 1.0 at the 1st
         anchor_strides=[8, 16, 32, 64, 128],
         anchor_scales=[4],
         #anchor_scales=[2,4,6],
@@ -50,8 +50,8 @@ model = dict(
             alpha=0.25,
             loss_weight=1.0),
         loss_odm_bbox=dict(
-            type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
-            #type='PolyCIoULoss', iou_thr=0.2, loss_weight=1.0),
+            #type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
+            type='PolyCIoULoss', iou_thr=0.2, loss_weight=1.0),
         test_cfg=dict(
             nms_pre=2000,
             min_bbox_size=0,
@@ -63,13 +63,14 @@ model = dict(
             fam_cfg=dict(
                 assigner=dict(
                     type='MaxIoUAssigner',
-                    pos_iou_thr=0.8,
+                    pos_iou_thr=0.5,
                     neg_iou_thr=0.4,
-                    min_pos_iou=0,
+                    min_pos_iou=0.,
                     ignore_iof_thr=-1,
                     match_low_quality=True,
-                    gt_max_assign_all=False,
+                    gt_max_assign_all=True,
                     iou_calculator=dict(type='BboxOverlaps2D_rotated')),
+                    #assigner=dict(type='MinCenterDiffAssigner'),
                 bbox_coder=dict(type='DeltaXYWHABBoxCoder',
                                 target_means=(0., 0., 0., 0., 0.),
                                 target_stds=(1., 1., 1., 1., 1.),
@@ -80,20 +81,21 @@ model = dict(
                 debug=False),
             odm_cfg=dict(
                 assigner=dict(
-                    type='MaxIoUAssigner',
-                    pos_iou_thr=0.8,
-                    neg_iou_thr=0.4,
-                    min_pos_iou=0.,
-                    ignore_iof_thr=-1,
-                    match_low_quality=True,
-                    gt_max_assign_all=False,
-                    iou_calculator=dict(type='BboxOverlaps2D_rotated')),
+                type='MaxIoUAssigner',
+                pos_iou_thr=0.5,
+                neg_iou_thr=0.4,
+                min_pos_iou=0,
+                ignore_iof_thr=-1,
+                match_low_quality=True,
+                gt_max_assign_all=True,
+                iou_calculator=dict(type='BboxOverlaps2D_rotated')),
+                #assigner=dict(type='MinCenterDiffAssigner'),
                 bbox_coder=dict(type='DeltaXYWHABBoxCoder',
                                 target_means=(0., 0., 0., 0., 0.),
                                 target_stds=(1., 1., 1., 1., 1.),
                                 clip_border=True),
                 allowed_border=-1,
-                reg_decoded_bbox=False,
+                reg_decoded_bbox=True,
                 pos_weight=-1,
                 debug=False))
         )
@@ -109,10 +111,10 @@ dataset = dict(
                 max_size=1024
             ),
             dict(type='RotatedRandomFlip', prob=0.5),
-            #dict(
-            #type="RandomRotateAug",
-            #random_rotate_on=True,
-            #),
+            dict(
+            type="RandomRotateAug",
+            random_rotate_on=True,
+            ),
             dict(
                 type = "Pad",
                 size_divisor=32),
@@ -214,7 +216,7 @@ dataset = dict(
 optimizer = dict(
     type='SGD',
     #lr=0.01/4., #0.0,#0.01*(1/8.),
-    lr=0.01/8., #0.0,#0.01*(1/8.),
+    lr=0.01/6., #0.0,#0.01*(1/8.),
     momentum=0.95,
     weight_decay=0.0001,
     grad_clip=dict(

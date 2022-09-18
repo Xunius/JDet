@@ -245,7 +245,7 @@ def poly_ciou_loss(pred, target, iou_thr, eps=1e-6, weight=None, reduction='mean
     return loss
 
 
-def saf(pred_oboxes, target_oboxes, n_samples=6):
+def saf(pred_oboxes, target_oboxes, n_samples=10):
 
     poly = rotated_box_to_poly(pred_oboxes).reshape(-1, 4, 2).roll(-1, 1)
     factors2 = jt.arange(n_samples) / n_samples
@@ -523,7 +523,7 @@ class PolyCIoULoss(nn.Module):
             # iou_loss of shape (n,)
             assert weight.shape == pred.shape
             weight = weight.mean(-1)
-        loss1 = self.loss_weight * poly_saf_loss(
+        loss1 = self.loss_weight * poly_sdf_loss(
             pred,
             target,
             self.iou_thr,

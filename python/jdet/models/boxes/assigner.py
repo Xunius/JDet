@@ -1,3 +1,4 @@
+import numpy as np
 import jittor as jt 
 from jdet.utils.registry import BOXES,build_from_cfg
 
@@ -223,3 +224,127 @@ class MaxIoUAssignerRbbox(MaxIoUAssigner):
             assert NotImplementedError
         assign_result = self.assign_wrt_overlaps(overlaps, gt_labels)
         return assign_result
+
+@BOXES.register_module()
+class MinCenterDiffAssigner():
+    def __init__(self, n_ratios, n_angles, n_scales):
+        self.n_ratios = n_ratios
+        self.n_angles = n_angles
+        self.n_scales = n_scales
+
+    def assign_l1(self, bboxes, gt_bboxes, gt_bboxes_ignore=None, gt_labels=None):
+        """Assign gt to bboxes.
+
+        Args:
+            bboxes (Tensor): Bounding boxes to be assigned, shape(n, 4).
+            gt_bboxes (Tensor): Groundtruth boxes, shape (k, 4).
+            gt_bboxes_ignore (Tensor, optional): Ground truth bboxes that are
+                labelled as `ignored`, e.g., crowd boxes in COCO.
+            gt_labels (Tensor, optional): Label of gt_bboxes, shape (k, ).
+
+        Returns:
+            :obj:`AssignResult`: The assign result.
+        """
+
+        if bboxes.shape[0] == 0 or gt_bboxes.shape[0] == 0:
+            raise ValueError('No gt or bboxes')
+
+        num_bboxes = len(bboxes)
+        num_gts = len(gt_bboxes)
+
+        #n_anchors = self.n_ratios * self.n_angles * self.n_scales
+        #nn = bboxes.shape[0] // n_anchors  # nn: number of locations in feature map, e.g. 128*128
+
+        # assign ground truth to feature map location
+        ctr_diff = jt.abs(bboxes[:, None, :] - gt_bboxes[None, :, :])
+
+        # min center diff for each anchor
+        argmin_xy, min_ctr_diff = ctr_diff.argmin(dim=1)
+
+        # min center diff for each gt
+        gt_argmin_xy, gt_min_diff = ctr_diff.argmin(dim=0)
+
+        # get assignment indices
+        assigned_gt_inds = jt.full((num_bboxes,), 0).int()
+        pos_inds = gt_argmin_xy
+        assigned_gt_inds[pos_inds] = jt.arange(1, num_gts+1)
+
+        assigned_labels = jt.full((num_bboxes, ), 0, dtype=assigned_gt_inds.dtype)
+        pos_inds = jt.nonzero(assigned_gt_inds > 0).squeeze(-1)
+        if pos_inds.numel() > 0:
+            assigned_labels[pos_inds] = gt_labels[assigned_gt_inds[pos_inds] - 1]
+
+        ass = AssignResult(num_gts, assigned_gt_inds, min_ctr_diff, labels=assigned_labels)
+
+        return ass
+
+    def assign(self, bboxes, gt_bboxes, gt_bboxes_ignore=None, gt_labels=None):
+        """Assign gt to bboxes.
+
+        Args:
+            bboxes (Tensor): Bounding boxes to be assigned, shape(n, 4).
+            gt_bboxes (Tensor): Groundtruth boxes, shape (k, 4).
+            gt_bboxes_ignore (Tensor, optional): Ground truth bboxes that are
+                labelled as `ignored`, e.g., crowd boxes in COCO.
+            gt_labels (Tensor, optional): Label of gt_bboxes, shape (k, ).
+
+        Returns:
+            :obj:`AssignResult`: The assign result.
+        """
+
+        if bboxes.shape[0] == 0 or gt_bboxes.shape[0] == 0:
+            raise ValueError('No gt or bboxes')
+
+        num_bboxes = len(bboxes)
+        num_gts = len(gt_bboxes)
+
+        n_anchors = self.n_ratios * self.n_angles * self.n_scales
+        #nn = bboxes.shape[0] // n_anchors  # nn: number of locations in feature map, e.g. 128*128
+
+        # assign ground truth to feature map location
+        anchors_xc = bboxes[::n_anchors, 0]
+        anchors_yc = bboxes[::n_anchors, 1]
+        gt_xc = gt_bboxes[:, 0]
+        gt_yc = gt_bboxes[:, 1]
+        ctr_diff = (anchors_xc[:, None] - gt_xc[None, :]).sqr() + (anchors_yc[:, None] - gt_yc[None, :]).sqr()
+
+        # min center diff for each anchor
+        min_ctr_diff = ctr_diff.argmin(dim=1)[1]
+
+        # min center diff for each gt
+        gt_argmin_xy = ctr_diff.argmin(dim=0)[0]
+
+        # anchors at each location
+        anchors_1 = bboxes[:n_anchors].reshape(self.n_ratios, self.n_scales, self.n_angles, -1)
+
+        # comparae H/W ratios
+        anchors_hori = anchors_1[:, 0, 0]
+        bbox_ratio = anchors_hori[:, 3] / anchors_hori[:, 2]
+        gt_ratio = gt_bboxes[:, 3] / gt_bboxes[:, 2]
+        ratio_diff = jt.abs(bbox_ratio[:, None] - gt_ratio[None, :])
+        ratio_idx = jt.argmin(ratio_diff, 0)[0]
+
+        # compare angles
+        bbox_angle = anchors_1[0, 0, :, -1]
+        gt_angle = gt_bboxes[:, -1]
+        angle_diff = (bbox_angle[:, None] - gt_angle[None, :]) % np.pi
+        angle_idx = jt.argmin(angle_diff, 0)[0]
+
+        # combine ratio with angle diffs
+        aidx = angle_idx + ratio_idx * self.n_angles * self.n_scales
+
+        # get assignment indices
+        assigned_gt_inds = jt.full((num_bboxes,), 0).int()
+        pos_inds = gt_argmin_xy * n_anchors + aidx
+        assigned_gt_inds[pos_inds] = jt.arange(1, num_gts+1)
+
+        assigned_labels = jt.full((num_bboxes, ), 0, dtype=assigned_gt_inds.dtype)
+        pos_inds = jt.nonzero(assigned_gt_inds > 0).squeeze(-1)
+        if pos_inds.numel() > 0:
+            assigned_labels[pos_inds] = gt_labels[assigned_gt_inds[pos_inds] - 1]
+
+        ass = AssignResult(num_gts, assigned_gt_inds, min_ctr_diff, labels=assigned_labels)
+        del ctr_diff, anchors_1
+
+        return ass
+
